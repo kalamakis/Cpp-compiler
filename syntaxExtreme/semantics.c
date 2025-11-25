@@ -226,3 +226,15 @@ Type *sem_binary_equality(Type *lhs, Type *rhs, int line){
 }
 
 
+Type *sem_index(Type *arrayType, Type *indexType, int line) {
+    if (!arrayType || arrayType == type_error) return type_error;
+    if (arrayType->kind != TYPE_ARRAY) {
+        sem_fatal("attempt to index non-array type at line %d", line);
+    }
+    if (!indexType || indexType == type_error) return type_error;
+    if (indexType->kind != TYPE_INT) {
+        sem_fatal("array index must be of type int at line %d", line);
+    }
+    /* επιστρέφουμε το στοιχειακό τύπο (μπορεί να είναι άλλο array για multi-dim) */
+    return arrayType->elem_type;
+}

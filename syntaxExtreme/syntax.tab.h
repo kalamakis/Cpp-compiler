@@ -1,9 +1,8 @@
-/* A Bison parser, made by GNU Bison 3.8.2.  */
+/* A Bison parser, made by GNU Bison 3.0.4.  */
 
 /* Bison interface for Yacc-like parsers in C
 
-   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2021 Free Software Foundation,
-   Inc.
+   Copyright (C) 1984, 1989-1990, 2000-2015 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -16,7 +15,7 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* As a special exception, you may create a larger work that contains
    part or all of the Bison parser skeleton and distribute that work
@@ -31,10 +30,6 @@
    This special exception was added by the Free Software Foundation in
    version 2.2 of Bison.  */
 
-/* DO NOT RELY ON FEATURES THAT ARE NOT DOCUMENTED in the manual,
-   especially those whose name start with YY_ or yy_.  They are
-   private implementation details that can be changed or removed.  */
-
 #ifndef YY_YY_SYNTAX_TAB_H_INCLUDED
 # define YY_YY_SYNTAX_TAB_H_INCLUDED
 /* Debug traces.  */
@@ -45,87 +40,84 @@
 extern int yydebug;
 #endif
 
-/* Token kinds.  */
+/* Token type.  */
 #ifndef YYTOKENTYPE
 # define YYTOKENTYPE
   enum yytokentype
   {
-    YYEMPTY = -2,
-    T_EOF = 0,                     /* "eof"  */
-    YYerror = 256,                 /* error  */
-    YYUNDEF = 257,                 /* "invalid token"  */
-    T_TYPEDEF = 258,               /* "typedef"  */
-    T_CHAR = 259,                  /* "char"  */
-    T_INT = 260,                   /* "int"  */
-    T_FLOAT = 261,                 /* "float"  */
-    T_STRING = 262,                /* "string"  */
-    T_CONST = 263,                 /* "const"  */
-    T_CLASS = 264,                 /* "class"  */
-    T_PRIVATE = 265,               /* "private"  */
-    T_PROTECTED = 266,             /* "protected"  */
-    T_PUBLIC = 267,                /* "public"  */
-    T_VOID = 268,                  /* "void"  */
-    T_STATIC = 269,                /* "static"  */
-    T_UNION = 270,                 /* "union"  */
-    T_ENUM = 271,                  /* "enum"  */
-    T_LIST = 272,                  /* "list"  */
-    T_CONTINUE = 273,              /* "continue"  */
-    T_BREAK = 274,                 /* "break"  */
-    T_IF = 275,                    /* "if"  */
-    T_ELSE = 276,                  /* "else"  */
-    T_WHILE = 277,                 /* "while"  */
-    T_FOR = 278,                   /* "for"  */
-    T_RETURN = 279,                /* "return"  */
-    T_LENGTH = 280,                /* "length"  */
-    T_CIN = 281,                   /* "cin"  */
-    T_COUT = 282,                  /* "cout"  */
-    T_MAIN = 283,                  /* "main"  */
-    T_THIS = 284,                  /* "this"  */
-    T_ID = 285,                    /* "id"  */
-    T_NUM = 286,                   /* "num"  */
-    T_ICONST = 287,                /* "iconst"  */
-    T_UNKNOWN = 288,               /* "unknown"  */
-    T_FCONST = 289,                /* "fconst"  */
-    T_SCONST = 290,                /* "sconst"  */
-    T_CCONST = 291,                /* "cconst"  */
-    T_OROP = 292,                  /* "orop"  */
-    T_ANDOP = 293,                 /* "andop"  */
-    T_EQUOP = 294,                 /* "equop"  */
-    T_RELOP = 295,                 /* "relop"  */
-    T_ADDOP = 296,                 /* "addop"  */
-    T_MULOP = 297,                 /* "mulop"  */
-    T_NOTOP = 298,                 /* "notop"  */
-    T_INCDEC = 299,                /* "incdec"  */
-    T_SIZEOP = 300,                /* "sizeop"  */
-    T_LISTFUNC = 301,              /* "listfunc"  */
-    T_LPAREN = 302,                /* "lparen"  */
-    T_RPAREN = 303,                /* "rparen"  */
-    T_SEMI = 304,                  /* "semi"  */
-    T_DOT = 305,                   /* "dot"  */
-    T_COMMA = 306,                 /* "comma"  */
-    T_ASSIGN = 307,                /* "assign"  */
-    T_COLON = 308,                 /* "colon"  */
-    T_LBRACK = 309,                /* "lbrack"  */
-    T_RBRACK = 310,                /* "rbrack"  */
-    T_REFER = 311,                 /* "refer"  */
-    T_LBRACE = 312,                /* "lbrace"  */
-    T_RBRACE = 313,                /* "rbrace"  */
-    T_METH = 314,                  /* "meth"  */
-    T_INP = 315,                   /* "inp"  */
-    T_OUT = 316,                   /* "out"  */
-    T_ERROR = 317,                 /* "error"  */
-    PREFIX = 318,                  /* PREFIX  */
-    POSTFIX = 319,                 /* POSTFIX  */
-    LOWER_THAN_ELSE = 320          /* LOWER_THAN_ELSE  */
+    T_EOF = 0,
+    T_TYPEDEF = 258,
+    T_CHAR = 259,
+    T_INT = 260,
+    T_FLOAT = 261,
+    T_STRING = 262,
+    T_CONST = 263,
+    T_CLASS = 264,
+    T_PRIVATE = 265,
+    T_PROTECTED = 266,
+    T_PUBLIC = 267,
+    T_VOID = 268,
+    T_STATIC = 269,
+    T_UNION = 270,
+    T_ENUM = 271,
+    T_LIST = 272,
+    T_CONTINUE = 273,
+    T_BREAK = 274,
+    T_IF = 275,
+    T_ELSE = 276,
+    T_WHILE = 277,
+    T_FOR = 278,
+    T_RETURN = 279,
+    T_LENGTH = 280,
+    T_CIN = 281,
+    T_COUT = 282,
+    T_MAIN = 283,
+    T_THIS = 284,
+    T_ID = 285,
+    T_NUM = 286,
+    T_ICONST = 287,
+    T_UNKNOWN = 288,
+    T_FCONST = 289,
+    T_SCONST = 290,
+    T_CCONST = 291,
+    T_OROP = 292,
+    T_ANDOP = 293,
+    T_EQUOP = 294,
+    T_RELOP = 295,
+    T_ADDOP = 296,
+    T_MULOP = 297,
+    T_NOTOP = 298,
+    T_INCDEC = 299,
+    T_SIZEOP = 300,
+    T_LISTFUNC = 301,
+    T_LPAREN = 302,
+    T_RPAREN = 303,
+    T_SEMI = 304,
+    T_DOT = 305,
+    T_COMMA = 306,
+    T_ASSIGN = 307,
+    T_COLON = 308,
+    T_LBRACK = 309,
+    T_RBRACK = 310,
+    T_REFER = 311,
+    T_LBRACE = 312,
+    T_RBRACE = 313,
+    T_METH = 314,
+    T_INP = 315,
+    T_OUT = 316,
+    T_ERROR = 317,
+    PREFIX = 318,
+    POSTFIX = 319,
+    LOWER_THAN_ELSE = 320
   };
-  typedef enum yytokentype yytoken_kind_t;
 #endif
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
+
 union YYSTYPE
 {
-#line 30 "syntax.y"
+#line 30 "syntax.y" /* yacc.c:1909  */
 
     int   intval;
     float floatval;
@@ -133,9 +125,9 @@ union YYSTYPE
     char  charval;
     Type *type;
 
-#line 137 "syntax.tab.h"
-
+#line 129 "syntax.tab.h" /* yacc.c:1909  */
 };
+
 typedef union YYSTYPE YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define YYSTYPE_IS_DECLARED 1
@@ -144,8 +136,6 @@ typedef union YYSTYPE YYSTYPE;
 
 extern YYSTYPE yylval;
 
-
 int yyparse (void);
-
 
 #endif /* !YY_YY_SYNTAX_TAB_H_INCLUDED  */
