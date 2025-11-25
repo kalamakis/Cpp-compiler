@@ -16,11 +16,11 @@ typedef enum {
     TYPE_ERROR
 } TypeKind;
 
+//NOTE when adding stuff here update make simple type
 typedef struct Type {
     TypeKind kind;
     struct Type * elem_type;
     int array_size;           // μόνο για TYPE_ARRAY, μία διάσταση
-                              // 0 αν είναι άγνωστο / [] (open array)
     /* Για TYPE_CLASS και TYPE_UNION αργότερα θα μπει λίστα από fields */
 } Type;
 
@@ -32,8 +32,6 @@ extern Type *type_char;
 extern Type *type_string;
 extern Type *type_void;
 extern Type *type_error;
-
-// Type *make_simple_type(TypeKind kind);
 
 Type *make_list_type(Type *elem);
 

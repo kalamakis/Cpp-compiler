@@ -12,6 +12,7 @@ Type *make_simple_type(TypeKind kind){
     Type *t = malloc(sizeof(Type));
     t->kind = kind;
     t->elem_type = NULL;
+    t->array_size=NULL;
     return t;
 }
 
@@ -34,8 +35,7 @@ void init_types(void){
 
 Type *make_array_type(Type *elem_type, int size)
 {
-    Type *t = (Type*)malloc(sizeof(Type));
-    t->kind = TYPE_ARRAY;
+    Type *t=make_simple_type(TYPE_ARRAY);
     t->elem_type = elem_type;
     t->array_size = size;   // 0 -> open array []
     return t;
