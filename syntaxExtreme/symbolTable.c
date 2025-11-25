@@ -30,12 +30,12 @@ void symtab_init(void)
     g_symtab = hashtbl_create(211, NULL);
     current_scope = 0;
 
-    type_int    = make_type(TYPE_INT);
-    type_float  = make_type(TYPE_FLOAT);
-    type_char   = make_type(TYPE_CHAR);
-    type_string = make_type(TYPE_STRING);
-    type_void   = make_type(TYPE_VOID);
-    type_error  = make_type(TYPE_ERROR);
+    type_int    = make_simple_type(TYPE_INT);
+    type_float  = make_simple_type(TYPE_FLOAT);
+    type_char   = make_simple_type(TYPE_CHAR);
+    type_string = make_simple_type(TYPE_STRING);
+    type_void   = make_simple_type(TYPE_VOID);
+    type_error  = make_simple_type(TYPE_ERROR);
 }
 
 void symtab_enter_scope(void)

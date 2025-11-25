@@ -1,14 +1,9 @@
-int kostas();
+int list L1;
+string list S;    // ΠΡΕΠΕΙ να απορριφθεί: list string δεν επιτρέπεται
 
-int main(){
-    int x;
-    float y;
+int main() {
+    L1 = [1, 2, 3];
+    //S  = ["a", "b"];  // κι εδώ το ίδιο
 
-    x=x+y+0.5;
-    
     return 0;
-}
-
-int kostas() {
-    
 }

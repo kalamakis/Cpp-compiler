@@ -241,3 +241,22 @@ Type *sem_make_list_type(Type *elem_type, int line){
 
     return make_list_type(elem_type);
 }
+
+Type *sem_find_list_element_type(Type *acc, Type *elem, int line){
+    if (!acc || acc == type_error) return elem;
+    if (!elem || elem == type_error) return acc;
+
+    if (is_composite(acc->kind) || acc->kind == TYPE_STRING || is_composite(elem->kind) || elem->kind == TYPE_STRING) {
+        sem_fatal("list elements cannot be composite or string (line %d)", line);
+    }
+
+    if (acc->kind != elem->kind) {
+        sem_fatal("all list elements must have the same type (line %d)", line);
+    }
+
+    if (acc->kind == TYPE_ENUM && acc != elem) {
+        sem_fatal("all enum list elements must be of the same enum type (line %d)", line);
+    }
+
+    return acc;
+}

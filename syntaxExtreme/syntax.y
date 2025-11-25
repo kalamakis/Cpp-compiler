@@ -105,7 +105,7 @@
 // %type <strval> full_func_declaration full_par_func_header class_func_header_start func_class parameter_list pass_variabledef nopar_class_func_header
 // %type <strval> decl_statements declarations decltype statements statement expression_statement if_statement if_tail while_statement for_statement optexpr
 // %type <strval> return_statement io_statement in_list in_item out_list out_item comp_statement main_function main_header
-%type <type> typename standard_type variable assignment expression constant expression_list general_expression listexpression
+%type <type> typename standard_type variable assignment expression constant expression_list general_expression listexpression list_elements
  
 %left T_COMMA
 %right T_ASSIGN
@@ -213,9 +213,9 @@ general_expression :        general_expression T_COMMA general_expression       
                             | assignment                                        {$$ = $1;}
                             ;
 assignment :                variable T_ASSIGN assignment                        {$$ = sem_check_assignment($1, $3, yylineno);}
-                            | expression                                        {$$=type_error;} // META $$=$1
+                            | expression                                        {$$=$1;} // META $$=$1
                             ;
-expression_list :           general_expression                                  {$$ = $1;}
+expression_list             :general_expression                                 {$$ = $1;}
                             | %empty                                            {$$ = type_void;}
                             ;
 constant :                  T_CCONST                                            { $$ = type_char;   }
@@ -224,7 +224,10 @@ constant :                  T_CCONST                                            
                             | T_SCONST                                          { $$ = type_string; }
                             ;
 
-listexpression :            T_LBRACK expression_list T_RBRACK                   {$$ = sem_make_list_type($2, yylineno);}
+listexpression :            T_LBRACK list_elements T_RBRACK                   {$$ = sem_make_list_type($2, yylineno);}
+
+list_elements:              list_elements T_COMMA assignment                    { $$ = sem_find_list_element_type($1, $3, yylineno); }
+                            | assignment                                        { $$ = $1; }
                             ;
 init_values :               init_values T_COMMA init_value
                             | init_value

@@ -28,4 +28,5 @@ Type *sem_unary_incdec(Type *t, int line);
 
 //list
 Type *sem_make_list_type(Type *elem_type, int line);
+Type *sem_find_list_element_type(Type *acc, Type *elem, int line);
 #endif
