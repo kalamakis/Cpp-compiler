@@ -3,6 +3,7 @@
 
 #include "types.h"
 #include "symbolTable.h"
+#include <stdbool.h>
 
 void sem_fatal(const char *fmt, ...);
 
@@ -14,6 +15,7 @@ int is_enum(TypeKind k);
 int is_list(TypeKind k);
 //array/list/class/union
 static int is_composite(TypeKind k);
+bool types_compatible_for_assignment(Type *lhs, Type *rhs)
 
 Type *sem_check_assignment(Type *left, Type *right, int line);
 
