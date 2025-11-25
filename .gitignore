@@ -1,0 +1,11 @@
+# OS junk
+.DS_Store
+Thumbs.db
+
+parser 
+syntax.tab.c 
+syntax.tab.h 
+lex.yy.c
+comp.output 
+comp.tab.c
+comp.tab.h
