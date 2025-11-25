@@ -105,7 +105,7 @@
 // %type <strval> full_func_declaration full_par_func_header class_func_header_start func_class parameter_list pass_variabledef nopar_class_func_header
 // %type <strval> decl_statements declarations decltype statements statement expression_statement if_statement if_tail while_statement for_statement optexpr
 // %type <strval> return_statement io_statement in_list in_item out_list out_item comp_statement main_function main_header
-%type <type> typename standard_type variable assignment expression constant expression_list general_expression listexpression list_elements typed_typename
+%type <type> typename standard_type variable assignment expression constant expression_list general_expression listexpression list_elements typed_typename dims dim
 %type <intval> listspec
  
 %left T_COMMA
@@ -175,10 +175,11 @@ standard_type :             T_CHAR                                              
 listspec :                  T_LIST                                              {$$ = 1;} 
                             | %empty                                            {$$ = 0;}
                             ;
-dims :                      dims dim
-                            | %empty         {;}
+dims :                      dims dim                                            { $$ = attach_nested_array($1, $2); }
+                            | %empty                                            { $$ = NULL; } 
                             ;
-dim :                       T_LBRACK T_ICONST T_RBRACK | T_LBRACK T_RBRACK
+dim :                       T_LBRACK T_ICONST T_RBRACK                          { $$ = make_array_type(NULL, $2); }
+                            | T_LBRACK T_RBRACK                                 { $$ = make_array_type(NULL, 0); }
                             ;
 const_declaration :         T_CONST typename { current_type = $2; } constdefs T_SEMI
                             ;
@@ -213,7 +214,7 @@ expression :                expression T_OROP expression                        
                             | T_LPAREN standard_type T_RPAREN                   {$$=$2;}
                             | listexpression                                    {$$=$1;}
                             ;
-variable :                  variable T_LBRACK general_expression T_RBRACK       {$$=$1;} //for arrays/lists later
+variable :                  variable T_LBRACK general_expression T_RBRACK       {$$ = sem_index($1, $3, yylineno);}
                             | variable T_DOT T_ID                               {$$= type_error;} //for classes/unions later //{symtab_insert($3, SYM_VAR, NULL);}
                             | T_LISTFUNC T_LPAREN general_expression T_RPAREN   {$$= type_error;}
                             | decltype T_ID                                     {$$ = sem_use_variable($2, yylineno); }
@@ -299,6 +300,11 @@ variabledef :               listspec T_ID dims                                  
                                                                                     if ($1) {  /* αν listspec == 1 → είναι λίστα */
                                                                                         t = sem_make_list_type(current_type, yylineno);
                                                                                     }
+                                                                                    else if ($3 == NULL)
+                                                                                        t = current_type;
+                                                                                    else
+                                                                                        t = attach_array_to_base(current_type, $3);
+
                                                                                     if (!symtab_insert($2, SYM_VAR, t)) {
                                                                                         YYERROR_FMT("Redeclaration of '%s'", $2);
                                                                                     }

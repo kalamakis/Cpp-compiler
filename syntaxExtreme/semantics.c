@@ -235,11 +235,25 @@ Type *sem_make_list_type(Type *elem_type, int line){
         sem_fatal("invalid element type for list (line %d)", line);
     }
 
+<<<<<<< HEAD
     if (is_composite(elem_type->kind) || elem_type->kind == TYPE_STRING) {
         sem_fatal("list element type cannot be composite or string (line %d)", line);
     }
 
     return make_list_type(elem_type);
+=======
+Type *sem_index(Type *arrayType, Type *indexType, int line) {
+    if (!arrayType || arrayType == type_error) return type_error;
+    if (arrayType->kind != TYPE_ARRAY) {
+        sem_fatal("attempt to index non-array type at line %d", line);
+    }
+    if (!indexType || indexType == type_error) return type_error;
+    if (indexType->kind != TYPE_INT) {
+        sem_fatal("array index must be of type int at line %d", line);
+    }
+    /* επιστρέφουμε το στοιχειακό τύπο (μπορεί να είναι άλλο array για multi-dim) */
+    return arrayType->elem_type;
+>>>>>>> c84b9f2cc1dbbebb561d6beacda23619a30966d8
 }
 
 Type *sem_find_list_element_type(Type *acc, Type *elem, int line){
