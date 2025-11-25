@@ -148,13 +148,8 @@ typedef_declaration :       T_TYPEDEF typename listspec T_ID dims T_SEMI        
                                                                                     }
                                                                                 }
                             ;
-typed_typename
-    : typename
-      {
-          current_type = $1;  /* εδώ κάνουμε το side-effect */
-          $$ = $1;            /* και περνάμε το Type* προς τα κάτω αν χρειαστεί */
-      }
-    ;
+typed_typename:              typename                                           {current_type = $1; $$ = $1;}
+                            ;
 
 typename :                  standard_type
                             | T_ID                                              {Symbol *s = symtab_lookup($1);
