@@ -3,12 +3,10 @@ int kostas();
 int main(){
     int x;
     float y;
+    int z[5];
 
+    z[y] = 5;
     x=x+y+0.5;
     
     return 0;
-}
-
-int kostas() {
-    
 }
