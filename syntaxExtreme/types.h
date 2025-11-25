@@ -18,7 +18,8 @@ typedef enum {
 
 typedef struct Type {
     TypeKind kind;
-    int array_size;           // μόνο για TYPE_ARRAY, μία διάσταση
+    int array_size;   
+    struct type *elem_type;        // μόνο για TYPE_ARRAY, μία διάσταση
                               // 0 αν είναι άγνωστο / [] (open array)
 
     // αν θες multi-dimensional array, κάνεις nested arrays:
