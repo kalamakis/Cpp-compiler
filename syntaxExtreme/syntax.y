@@ -105,7 +105,8 @@
 // %type <strval> full_func_declaration full_par_func_header class_func_header_start func_class parameter_list pass_variabledef nopar_class_func_header
 // %type <strval> decl_statements declarations decltype statements statement expression_statement if_statement if_tail while_statement for_statement optexpr
 // %type <strval> return_statement io_statement in_list in_item out_list out_item comp_statement main_function main_header
-%type <type> typename standard_type variable assignment expression constant expression_list general_expression listexpression list_elements
+%type <type> typename standard_type variable assignment expression constant expression_list general_expression listexpression list_elements typed_typename
+%type <intval> listspec
  
 %left T_COMMA
 %right T_ASSIGN
@@ -147,6 +148,14 @@ typedef_declaration :       T_TYPEDEF typename listspec T_ID dims T_SEMI        
                                                                                     }
                                                                                 }
                             ;
+typed_typename
+    : typename
+      {
+          current_type = $1;  /* εδώ κάνουμε το side-effect */
+          $$ = $1;            /* και περνάμε το Type* προς τα κάτω αν χρειαστεί */
+      }
+    ;
+
 typename :                  standard_type
                             | T_ID                                              {Symbol *s = symtab_lookup($1);
                                                                                     if (!s || s->kind != SYM_TYPE || !s->type) {
@@ -163,7 +172,8 @@ standard_type :             T_CHAR                                              
                             | T_STRING                                          {$$ = type_string;}   
                             | T_VOID                                            {$$ = type_void;}
                             ;           
-listspec :                  T_LIST | %empty         {;}
+listspec :                  T_LIST                                              {$$ = 1;} 
+                            | %empty                                            {$$ = 0;}
                             ;
 dims :                      dims dim
                             | %empty         {;}
@@ -277,8 +287,7 @@ member :                    var_declaration
                             | anonymous_union
                             ;
 
-var_declaration :           typename variabledefs T_SEMI { current_type = $1; }
-                            /* | typename { current_type = $1; } variabledefs error                    {YYERROR_FMT(" HINT: missing ';'"); yyerrok;} */
+var_declaration :           typed_typename variabledefs T_SEMI
                             ;
 
 variabledefs :              variabledefs T_COMMA variabledef
@@ -286,8 +295,11 @@ variabledefs :              variabledefs T_COMMA variabledef
                             ;
 
 variabledef :               listspec T_ID dims                                  {if (!current_type) current_type = type_error;
-                                                                                    /* Προς το παρόν αγνοούμε listspec/dims και δηλώνουμε απλό type */
-                                                                                    if (!symtab_insert($2, SYM_VAR, current_type)) {
+                                                                                    Type *t = current_type;
+                                                                                    if ($1) {  /* αν listspec == 1 → είναι λίστα */
+                                                                                        t = sem_make_list_type(current_type, yylineno);
+                                                                                    }
+                                                                                    if (!symtab_insert($2, SYM_VAR, t)) {
                                                                                         YYERROR_FMT("Redeclaration of '%s'", $2);
                                                                                     }
                                                                                 }
@@ -334,7 +346,7 @@ union_declaration :         T_UNION T_ID union_body T_SEMI                      
                                                                                 }
                             ;
 
-global_var_declaration :    typename init_variabledefs T_SEMI { current_type = $1; }
+global_var_declaration :    typed_typename init_variabledefs T_SEMI
                             /* |typename { current_type = $1; } init_variabledefs error                   {YYERROR_FMT(" HINT: missing ';' \n"); yyerrok;} */
                             ;
 

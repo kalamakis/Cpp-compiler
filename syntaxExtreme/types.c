@@ -11,6 +11,7 @@ Type *type_error = NULL;
 Type *make_simple_type(TypeKind kind){
     Type *t = malloc(sizeof(Type));
     t->kind = kind;
+    t->elem_type = NULL;
     return t;
 }
 

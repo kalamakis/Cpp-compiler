@@ -1,5 +1,5 @@
 int list L1;
-string list S;    // ΠΡΕΠΕΙ να απορριφθεί: list string δεν επιτρέπεται
+// string list S;    // ΠΡΕΠΕΙ να απορριφθεί: list string δεν επιτρέπεται
 
 int main() {
     L1 = [1, 2, 3];
