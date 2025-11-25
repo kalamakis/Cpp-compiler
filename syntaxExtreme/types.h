@@ -21,13 +21,6 @@ typedef struct Type {
     struct Type * elem_type;
     int array_size;           // μόνο για TYPE_ARRAY, μία διάσταση
                               // 0 αν είναι άγνωστο / [] (open array)
-
-    // αν θες multi-dimensional array, κάνεις nested arrays:
-    // int A[3][5] =>
-    //   TYPE_ARRAY (size=3)
-    //       elem_type -> TYPE_ARRAY (size=5)
-    //           elem_type -> TYPE_INT
-
     /* Για TYPE_CLASS και TYPE_UNION αργότερα θα μπει λίστα από fields */
 } Type;
 
@@ -46,7 +39,7 @@ Type *make_list_type(Type *elem);
 
 void init_types(void);
 
-Type *make_type(TypeKind kind);
+Type *make_simple_type(TypeKind kind);
 
 Type *make_array_type(Type *elem_type, int size);
 Type *attach_nested_array(Type *left, Type *right); /* left may be NULL */
