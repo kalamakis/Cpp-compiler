@@ -46,6 +46,11 @@ int is_list(TypeKind k){
     return (k == TYPE_LIST);
 }
 
+//array/list/class/union
+static int is_composite(TypeKind k){
+    return (k == TYPE_ARRAY ||k == TYPE_LIST || k == TYPE_CLASS || k == TYPE_UNION);
+}
+
 Type *sem_check_assignment(Type *left, Type *right, int line){
     if (!left || left == type_error || !right || right == type_error) {
         return type_error;
@@ -225,4 +230,14 @@ Type *sem_binary_equality(Type *lhs, Type *rhs, int line){
     return type_error;
 }
 
+Type *sem_make_list_type(Type *elem_type, int line){
+    if (!elem_type || elem_type == type_error) {
+        sem_fatal("invalid element type for list (line %d)", line);
+    }
 
+    if (is_composite(elem_type->kind) || elem_type->kind == TYPE_STRING) {
+        sem_fatal("list element type cannot be composite or string (line %d)", line);
+    }
+
+    return make_list_type(elem_type);
+}

@@ -224,12 +224,12 @@ constant :                  T_CCONST                                            
                             | T_SCONST                                          { $$ = type_string; }
                             ;
 
-listexpression :            T_LBRACK expression_list T_RBRACK                   {$$=$2;}
+listexpression :            T_LBRACK expression_list T_RBRACK                   {$$ = sem_make_list_type($2, yylineno);}
                             ;
 init_values :               init_values T_COMMA init_value
                             | init_value
                             ;
-enum_declaration :          T_ENUM T_ID enum_body T_SEMI                        {Type *t = make_type(TYPE_ENUM);
+enum_declaration :          T_ENUM T_ID enum_body T_SEMI                        {Type *t = make_simple_type(TYPE_ENUM);
                                                                                     if (!symtab_insert($2, SYM_TYPE, t)) {
                                                                                         YYERROR_FMT("Redeclaration of enum '%s'", $2);
                                                                                     }
@@ -249,7 +249,7 @@ id_list :                   id_list T_COMMA T_ID initializer                    
 initializer :               T_ASSIGN init_value
                             | %empty         {;}
                             ;
-class_declaration :         T_CLASS T_ID class_body T_SEMI                      {Type *t = make_type(TYPE_CLASS);
+class_declaration :         T_CLASS T_ID class_body T_SEMI                      {Type *t = make_simple_type(TYPE_CLASS);
                                                                                     if (!symtab_insert($2, SYM_TYPE, t)) {
                                                                                         YYERROR_FMT("Redeclaration of class '%s'", $2);
                                                                                     }
@@ -324,7 +324,7 @@ pass_list_dims :            T_REFER
                             ;
 nopar_func_header :         func_header_start T_LPAREN T_RPAREN ; 
 
-union_declaration :         T_UNION T_ID union_body T_SEMI                      {Type *t = make_type(TYPE_UNION);
+union_declaration :         T_UNION T_ID union_body T_SEMI                      {Type *t = make_simple_type(TYPE_UNION);
                                                                                     if (!symtab_insert($2, SYM_TYPE, t)) {
                                                                                         YYERROR_FMT("Redeclaration of union '%s'", $2);
                                                                                     }
@@ -443,7 +443,8 @@ int main(int argc, char *argv[]){
         return T_ERROR;
     }
 
-    symtab_init(); 
+    symtab_init();
+    init_types(); 
 
     yyparse();
 

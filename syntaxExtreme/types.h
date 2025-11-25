@@ -18,6 +18,7 @@ typedef enum {
 
 typedef struct Type {
     TypeKind kind;
+    struct Type *elem_type; //for lists (elements)
     /* εδώ αργότερα μπορείς να βάλεις extra info για array dims, fields κλπ */
 } Type;
 
@@ -29,6 +30,10 @@ extern Type *type_string;
 extern Type *type_void;
 extern Type *type_error;
 
-Type *make_type(TypeKind kind);
+Type *make_simple_type(TypeKind kind);
+
+Type *make_list_type(Type *elem);
+
+void init_types(void);
 
 #endif
