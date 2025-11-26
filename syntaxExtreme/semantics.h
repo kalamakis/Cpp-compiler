@@ -37,6 +37,7 @@ Type *sem_index(Type *arrayType, Type *indexType, int lineno);
 
 //FUNCTIONS
 
+Type *sem_check_function_return_type(Type *ret, int line);
 Type *sem_check_return(Type *func_type, Type *ret_type, int line);
 
 #endif

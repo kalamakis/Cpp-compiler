@@ -273,7 +273,10 @@ class_declaration :         T_CLASS T_ID class_body T_SEMI                      
                                                                                     }
                                                                                 }
                             ;
-class_body :                parent {symtab_enter_scope();} T_LBRACE members_methods T_RBRACE { symtab_leave_scope();};
+class_body :                parent                                              {symtab_enter_scope();} 
+                            T_LBRACE members_methods T_RBRACE                   { symtab_leave_scope();}
+                            ;
+
 parent :                    T_COLON T_ID                                        {Symbol *base = symtab_lookup($2);
                                                                                     if (!base || base->kind != SYM_TYPE) {
                                                                                         YYERROR_FMT("Unknown base class '%s'", $2);
@@ -327,7 +330,8 @@ short_func_declaration :    short_par_func_header T_SEMI                        
 short_par_func_header :     func_header_start T_LPAREN parameter_types T_RPAREN 
                             ;
 
-func_header_start :         type_with_list T_ID                                 {Type *ret = $1;
+func_header_start :         type_with_list T_ID                                 {
+                                                                                    Type *ret = sem_check_function_return_type($1, yylineno);
                                                                                     if (!symtab_insert($2, SYM_FUNC, ret)) {
                                                                                         YYERROR_FMT("Redeclaration of function '%s'", $2);
                                                                                     }

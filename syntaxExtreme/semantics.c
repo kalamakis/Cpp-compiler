@@ -300,6 +300,22 @@ Type *sem_find_list_element_type(Type *acc, Type *elem, int line){
 
 //FUNCTIONS
 
+Type *sem_check_function_return_type(Type *ret, int line) {
+    if (!ret || ret == type_error) {
+        sem_fatal("invalid function return type (line %d)", line);
+    }
+
+    if(ret->kind == TYPE_STRING)
+        sem_fatal("function cannot return string (line %d)", line);
+    else if(is_basic(ret->kind)||ret->kind == TYPE_VOID)
+        return ret;
+    else
+        sem_fatal("function cannot return this type (line %d)", line); /* κλάσεις, ενώσεις, πίνακες, κτλ. */
+
+    return type_error;
+}
+
+
 Type *sem_check_return(Type *func_type, Type *ret_type, int line) {
     if (!func_type) {
         sem_fatal("return statement outside of function (line %d)", line);

@@ -1,11 +1,17 @@
-int f() {
+// int f() {
+//     int x;
+//     return x;
+// }
+
+void f() {
     int x;
-    return x;
+    return ;
 }
 
-void g() {
-    return;
-}
+// string g() {
+//     string x;
+//     return x;
+// }
 
 // int h() {
 //     return;
@@ -16,5 +22,6 @@ void g() {
 // }
 
 int main() {
+    int f;
     return 0;
 }
