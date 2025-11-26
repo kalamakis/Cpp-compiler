@@ -59,7 +59,7 @@ bool types_compatible_for_assignment(Type *lhs, Type *rhs) {
     if (lhs == rhs) return true;
 
     /* 2. Αριθμητικοί τύποι: int ↔ float επιτρέπεται */
-    if (is_numeric_kind(lhs->kind) && is_numeric_kind(rhs->kind)) {
+    if (is_numeric(lhs->kind) && is_numeric(rhs->kind)) {
         return true;
     }
 
