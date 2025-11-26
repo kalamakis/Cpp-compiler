@@ -1,10 +1,16 @@
-int main(){
-    int x;
-    float y=0.5;
+int kostas(){
 
-    x=5;
-    x=x+y;
+}
 
-    x=x+0.5;
-    return 0;
+
+int main() {
+    int a; float b; char c; string s;
+    int list L1, L2;
+    a = b;      // ΟΚ
+    b = a;      // ΟΚ
+    // c = a;      // ΛΑΘΟΣ
+    s = "hello";  // ΟΚ
+    L1 = L2;    // ΟΚ
+    // L1 = a;     // ΛΑΘΟΣ
+    a = (b == a); // ΟΚ, b==a -> int
 }
