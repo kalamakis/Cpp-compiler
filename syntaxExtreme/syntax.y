@@ -105,7 +105,7 @@
 // %type <strval> full_func_declaration full_par_func_header class_func_header_start func_class parameter_list pass_variabledef nopar_class_func_header
 // %type <strval> decl_statements declarations decltype statements statement expression_statement if_statement if_tail while_statement for_statement optexpr
 // %type <strval> return_statement io_statement in_list in_item out_list out_item comp_statement main_function main_header
-%type <type> typename standard_type variable assignment expression constant expression_list general_expression listexpression list_elements typed_typename dims dim
+%type <type> typename standard_type variable assignment expression constant expression_list general_expression listexpression list_elements type_with_list dims dim
 %type <intval> listspec
  
 %left T_COMMA
@@ -148,7 +148,15 @@ typedef_declaration :       T_TYPEDEF typename listspec T_ID dims T_SEMI        
                                                                                     }
                                                                                 }
                             ;
-typed_typename:              typename                                           {current_type = $1; $$ = $1;}
+type_with_list:             typename listspec                                   {
+                                                                                    Type *t = $1;
+                                                                                    if ($2) {
+                                                                                       $$ = sem_make_list_type(t, yylineno);
+                                                                                    } else {
+                                                                                        $$ = t;
+                                                                                    }
+                                                                                    current_type = $$;
+                                                                                    }
                             ;
 
 typename :                  standard_type
@@ -230,7 +238,7 @@ constant :                  T_CCONST                                            
                             | T_SCONST                                          { $$ = type_string; }
                             ;
 
-listexpression :            T_LBRACK list_elements T_RBRACK                   {$$ = sem_make_list_type($2, yylineno);}
+listexpression :            T_LBRACK list_elements T_RBRACK                     {$$ = sem_make_list_type($2, yylineno);}
 
 list_elements:              list_elements T_COMMA assignment                    { $$ = sem_find_list_element_type($1, $3, yylineno); }
                             | assignment                                        { $$ = $1; }
@@ -283,25 +291,19 @@ member :                    var_declaration
                             | anonymous_union
                             ;
 
-var_declaration :           typed_typename variabledefs T_SEMI
+var_declaration :           type_with_list variabledefs T_SEMI
                             ;
 
 variabledefs :              variabledefs T_COMMA variabledef
                             | variabledef
                             ;
 
-variabledef :               listspec T_ID dims                                  {if (!current_type) current_type = type_error;
+variabledef :               T_ID dims                                           {if (!current_type) current_type = type_error;
                                                                                     Type *t = current_type;
-                                                                                    if ($1) {  /* αν listspec == 1 → είναι λίστα */
-                                                                                        t = sem_make_list_type(current_type, yylineno);
-                                                                                    }
-                                                                                    else if ($3 == NULL)
-                                                                                        t = current_type;
-                                                                                    else
-                                                                                        t = attach_array_to_base(current_type, $3);
-
-                                                                                    if (!symtab_insert($2, SYM_VAR, t)) {
-                                                                                        YYERROR_FMT("Redeclaration of '%s'", $2);
+                                                                                    if ($2 != NULL)         // piankas
+                                                                                        t = attach_array_to_base(current_type, $2);
+                                                                                    if (!symtab_insert($1, SYM_VAR, t)) {
+                                                                                        YYERROR_FMT("Redeclaration of '%s'", $1);
                                                                                     }
                                                                                 }
                             ;
@@ -324,11 +326,11 @@ short_func_declaration :    short_par_func_header T_SEMI                        
 short_par_func_header :     func_header_start T_LPAREN parameter_types T_RPAREN 
                             ;
 
-func_header_start :         typename listspec T_ID                              {Type *ret = $1;
-                                                                                    if (!symtab_insert($3, SYM_FUNC, ret)) {
-                                                                                        YYERROR_FMT("Redeclaration of function '%s'", $3);
+func_header_start :         type_with_list T_ID                                 {Type *ret = $1;
+                                                                                    if (!symtab_insert($2, SYM_FUNC, ret)) {
+                                                                                        YYERROR_FMT("Redeclaration of function '%s'", $2);
                                                                                     }
-                                                                                    symtab_enter_scope();   /* νέο scope για παραμέτρους+σώμα */
+                                                                                    symtab_enter_scope();
                                                                                 }
                             ;
 
@@ -347,7 +349,7 @@ union_declaration :         T_UNION T_ID union_body T_SEMI                      
                                                                                 }
                             ;
 
-global_var_declaration :    typed_typename init_variabledefs T_SEMI
+global_var_declaration :    type_with_list init_variabledefs T_SEMI
                             /* |typename { current_type = $1; } init_variabledefs error                   {YYERROR_FMT(" HINT: missing ';' \n"); yyerrok;} */
                             ;
 
@@ -366,9 +368,9 @@ full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRA
 full_par_func_header :      class_func_header_start T_LPAREN parameter_list T_RPAREN
                             | func_header_start T_LPAREN parameter_list T_RPAREN
                             ;
-class_func_header_start :   typename listspec func_class T_ID                   {Type *ret = $1;
-                                                                                    if (!symtab_insert($4, SYM_FUNC, ret)) {
-                                                                                        YYERROR_FMT("Redeclaration of method '%s'", $4);
+class_func_header_start :   type_with_list func_class T_ID                      {Type *ret = $1;
+                                                                                    if (!symtab_insert($3, SYM_FUNC, ret)) {
+                                                                                        YYERROR_FMT("Redeclaration of method '%s'", $3);
                                                                                     }
                                                                                     symtab_enter_scope();
                                                                                 }

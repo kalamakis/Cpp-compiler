@@ -6,7 +6,7 @@
 #define MAX_STR_CONST               256
 
 #ifndef FLEX_DEBUG
-#define FLEX_DEBUG                  0   
+#define FLEX_DEBUG                  1   
 #define FLEX_SHOW_TOKENS            1
 #define FLEX_SHOW_COMMENTS          1
 #define FLEX_SHOW_NUMERIC           1
