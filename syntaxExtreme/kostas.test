@@ -1,16 +1,20 @@
-int kostas(){
-
+int f() {
+    int x;
+    return x;
 }
 
+void g() {
+    return;
+}
+
+// int h() {
+//     return;
+// }
+
+// void bad() {
+//     return 3;
+// }
 
 int main() {
-    int a; float b; char c; string s;
-    int list L1, L2;
-    a = b;      // ΟΚ
-    b = a;      // ΟΚ
-    // c = a;      // ΛΑΘΟΣ
-    s = "hello";  // ΟΚ
-    L1 = L2;    // ΟΚ
-    // L1 = a;     // ΛΑΘΟΣ
-    a = (b == a); // ΟΚ, b==a -> int
+    return 0;
 }

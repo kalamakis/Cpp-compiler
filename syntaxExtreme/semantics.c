@@ -297,3 +297,29 @@ Type *sem_find_list_element_type(Type *acc, Type *elem, int line){
 
     return acc;
 }
+
+//FUNCTIONS
+
+Type *sem_check_return(Type *func_type, Type *ret_type, int line) {
+    if (!func_type) {
+        sem_fatal("return statement outside of function (line %d)", line);
+    }
+
+    /* void function */
+    if (func_type == type_void) {
+        if (ret_type != type_void) {
+            sem_fatal("void function cannot return a value (line %d)", line);
+        }
+        return type_void;
+    }
+
+    /* non-void function: πρέπει να επιστρέφει value */
+    if (ret_type == type_void) {
+        sem_fatal("non-void function must return a value (line %d)", line);
+    }
+
+    //check compatibility
+    sem_check_assignment(func_type, ret_type, line);
+
+    return func_type;
+}

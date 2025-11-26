@@ -427,12 +427,13 @@ if_tail:                    T_ELSE statement
                             ;
 while_statement :           T_WHILE T_LPAREN general_expression T_RPAREN statement;
 for_statement :             T_FOR T_LPAREN optexpr T_SEMI optexpr T_SEMI optexpr T_RPAREN statement;
-optexpr :                   general_expression
-                            | %empty         {;}
+optexpr :                   general_expression                                              {$$ = $1;}
+                            | %empty                                                        {$$ = type_void;}
                             ;
-return_statement :          T_RETURN optexpr T_SEMI;
+return_statement :          T_RETURN optexpr T_SEMI                                         {sem_check_return(current_function_type, $2, yylineno);}
+                            ;
 io_statement :              T_CIN T_INP in_list T_SEMI
-                            | T_COUT T_OUT out_list T_SEMI
+                            | T_COUT T_OUT out_list T_SEMI  
                             ;
 in_list :                   in_list T_INP in_item
                             | in_item
