@@ -22,6 +22,7 @@ typedef struct Type {
     struct Type * elem_type;
     int array_size;           // μόνο για TYPE_ARRAY, μία διάσταση
     /* Για TYPE_CLASS και TYPE_UNION αργότερα θα μπει λίστα από fields */
+    char *enum_name;
 } Type;
 
 
@@ -43,4 +44,5 @@ Type *make_array_type(Type *elem_type, int size);
 Type *attach_nested_array(Type *left, Type *right); /* left may be NULL */
 Type *attach_array_to_base(Type *base, Type *dims); /* επιστρέφει τον τελικό τύπο */
 
+Type *make_enum_type(const char *name);
 #endif

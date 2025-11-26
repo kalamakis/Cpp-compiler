@@ -34,4 +34,8 @@ Type *sem_find_list_element_type(Type *acc, Type *elem, int line);
 
 Type *sem_index(Type *arrayType, Type *indexType, int lineno);
 
+//Enums
+void sem_define_enum_constant(Type *enum_type, const char *name, int value, int line);
+
+
 #endif

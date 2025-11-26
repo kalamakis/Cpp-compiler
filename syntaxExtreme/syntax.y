@@ -23,6 +23,8 @@
 
     static Type *current_type = NULL;
     static Type *current_function_type = NULL;
+    static Type *current_enum_type = NULL;
+    static int current_enum_value = 0;
     
 %}
 
@@ -107,7 +109,7 @@
 // %type <strval> decl_statements declarations decltype statements statement expression_statement if_statement if_tail while_statement for_statement optexpr
 // %type <strval> return_statement io_statement in_list in_item out_list out_item comp_statement main_function main_header
 %type <type> typename standard_type variable assignment expression constant expression_list general_expression listexpression list_elements type_with_list dims dim
-%type <intval> listspec
+%type <intval> listspec initializer
  
 %left T_COMMA
 %right T_ASSIGN
@@ -247,25 +249,45 @@ list_elements:              list_elements T_COMMA assignment                    
 init_values :               init_values T_COMMA init_value
                             | init_value
                             ;
-enum_declaration :          T_ENUM T_ID enum_body T_SEMI                        {Type *t = make_simple_type(TYPE_ENUM);
+enum_declaration :          T_ENUM T_ID                                        {Type *t = make_enum_type($2);
                                                                                     if (!symtab_insert($2, SYM_TYPE, t)) {
                                                                                         YYERROR_FMT("Redeclaration of enum '%s'", $2);
                                                                                     }
+                                                                                    current_enum_type = t;
+                                                                                    current_enum_value = 0;
+                                                                                }
+                            enum_body T_SEMI
+                                                                                {
+                                                                                    /* τελειώσαμε με το enum */
+                                                                                    current_enum_type = NULL;
+                                                                                    current_enum_value = 0;
                                                                                 }
                             ;
 enum_body :                 T_LBRACE id_list T_RBRACE                           
-id_list :                   id_list T_COMMA T_ID initializer                    {/* enum constants -> ακέραιοι */
-                                                                                    if (!symtab_insert($3, SYM_ENUM_CONST, type_int)) {
+id_list :                   id_list T_COMMA T_ID initializer                    {if (!current_enum_type) {
+                                                                                        YYERROR_FMT("internal parser error: enum constant outside enum");
+                                                                                    }
+                                                                                    int val = ($4 == -1) ? current_enum_value : $4;
+                                                                                    /* insert enum constant (as SYM_ENUM_CONST) with type = current enum type */
+                                                                                    if (!symtab_insert($3, SYM_ENUM_CONST, current_enum_type)) {
                                                                                         YYERROR_FMT("Redeclaration of enum const '%s'", $3);
                                                                                     }
+                                                                                    /* -- optionally: we might want to record the numeric value somewhere later --
+                                                                                    For now we just advance the sequence counter. */
+                                                                                    current_enum_value = val + 1;
                                                                                 }
-                            | T_ID initializer                                  {if (!symtab_insert($1, SYM_ENUM_CONST, type_int)) {
+                            | T_ID initializer                                  {if (!current_enum_type) {
+                                                                                        YYERROR_FMT("internal parser error: enum constant outside enum");
+                                                                                    }
+                                                                                    int val = ($2 == -1) ? current_enum_value : $2;
+                                                                                    if (!symtab_insert($1, SYM_ENUM_CONST, current_enum_type)) {
                                                                                         YYERROR_FMT("Redeclaration of enum const '%s'", $1);
                                                                                     }
+                                                                                    current_enum_value = val + 1;
                                                                                 }
                             ;
-initializer :               T_ASSIGN init_value
-                            | %empty         {;}
+initializer :               T_ASSIGN T_ICONST                                   {$$ = $2;} /* explicit integer initializer */
+                            | %empty                                            {$$ = -1;} /*-1 = no initializer*/
                             ;
 class_declaration :         T_CLASS T_ID class_body T_SEMI                      {Type *t = make_simple_type(TYPE_CLASS);
                                                                                     if (!symtab_insert($2, SYM_TYPE, t)) {
