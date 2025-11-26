@@ -22,6 +22,7 @@
     int yyerrorno = 0;
 
     static Type *current_type = NULL;
+    static Type *current_function_type = NULL;
     
 %}
 
@@ -138,8 +139,8 @@ global_declaration :        typedef_declaration
                             | union_declaration
                             | global_var_declaration
                             | func_declaration
-                            | error T_SEMI                                      {yyerror(" HINT: syntax error in global declaration\n"); yyerrok;}
-                            | error T_RBRACE                                    {yyerror(" HINT: in global declaration\n"); yyerrok; }
+                            /* | error T_SEMI                                      {yyerror(" HINT: syntax error in global declaration\n"); yyerrok;} */
+                            /* | error T_RBRACE                                    {yyerror(" HINT: in global declaration\n"); yyerrok; } */
                             ;
 typedef_declaration :       T_TYPEDEF typename listspec T_ID dims T_SEMI        {
                                                                                     /* αγνοούμε προς το παρόν listspec/dims για σύνθετους, κρατάμε base type */
@@ -330,6 +331,7 @@ func_header_start :         type_with_list T_ID                                 
                                                                                     if (!symtab_insert($2, SYM_FUNC, ret)) {
                                                                                         YYERROR_FMT("Redeclaration of function '%s'", $2);
                                                                                     }
+                                                                                    current_function_type = ret;
                                                                                     symtab_enter_scope();
                                                                                 }
                             ;
@@ -372,6 +374,7 @@ class_func_header_start :   type_with_list func_class T_ID                      
                                                                                     if (!symtab_insert($3, SYM_FUNC, ret)) {
                                                                                         YYERROR_FMT("Redeclaration of method '%s'", $3);
                                                                                     }
+                                                                                    current_function_type = ret;
                                                                                     symtab_enter_scope();
                                                                                 }
                             ;
@@ -398,13 +401,13 @@ decl_statements :           declarations statements
                             | statements
                             | %empty         {;}
                             ;
-declarations :              declarations decltype typename { current_type = $3; } variabledefs T_SEMI
-                            | decltype typename { current_type = $2; } variabledefs T_SEMI
+declarations :              declarations decltype type_with_list  variabledefs T_SEMI
+                            | decltype type_with_list variabledefs T_SEMI
                             ;
 decltype :                  T_STATIC | %empty         {;};
 statements :                statements statement
                             | statement
-                            | statements error T_SEMI                           { YYERROR_FMT(" HINT:  error in statement - skipping until ';'"); yyerrok; }
+                            /* | statements error T_SEMI                           { YYERROR_FMT(" HINT:  error in statement - skipping until ';'"); yyerrok; } */
                             ;
 statement :                 expression_statement
                             | if_statement
