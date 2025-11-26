@@ -106,7 +106,7 @@
 // %type <strval> full_func_declaration full_par_func_header class_func_header_start func_class parameter_list pass_variabledef nopar_class_func_header
 // %type <strval> decl_statements declarations decltype statements statement expression_statement if_statement if_tail while_statement for_statement optexpr
 // %type <strval> return_statement io_statement in_list in_item out_list out_item comp_statement main_function main_header
-%type <type> typename standard_type variable assignment expression constant expression_list general_expression listexpression list_elements type_with_list dims dim
+%type <type> typename standard_type variable assignment expression constant expression_list general_expression listexpression list_elements type_with_list dims dim optexpr
 %type <intval> listspec
  
 %left T_COMMA
@@ -320,8 +320,8 @@ field :                     var_declaration;
 
 method :                    short_func_declaration;
 
-short_func_declaration :    short_par_func_header T_SEMI                        { symtab_leave_scope();}
-                            | nopar_func_header T_SEMI                          { symtab_leave_scope();}  
+short_func_declaration :    short_par_func_header T_SEMI                        { symtab_leave_scope(); current_function_type = NULL;}
+                            | nopar_func_header T_SEMI                          { symtab_leave_scope(); current_function_type = NULL;}  
                             ;
 
 short_par_func_header :     func_header_start T_LPAREN parameter_types T_RPAREN 
@@ -363,9 +363,9 @@ init_variabledef :          variabledef initializer;
 func_declaration :          short_func_declaration
                             | full_func_declaration;
 
-full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRACE                      { symtab_leave_scope();};
-                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { symtab_leave_scope();};
-                            | nopar_func_header T_LBRACE  decl_statements T_RBRACE                      { symtab_leave_scope();};
+full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRACE                      { symtab_leave_scope(); current_function_type = NULL;};
+                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { symtab_leave_scope(); current_function_type = NULL;};
+                            | nopar_func_header T_LBRACE  decl_statements T_RBRACE                      { symtab_leave_scope(); current_function_type = NULL;};
                             ;
 full_par_func_header :      class_func_header_start T_LPAREN parameter_list T_RPAREN
                             | func_header_start T_LPAREN parameter_list T_RPAREN
@@ -443,8 +443,8 @@ out_list :                  out_list T_OUT out_item
                             ;
 out_item :                  general_expression;
 comp_statement :            T_LBRACE {symtab_enter_scope();} decl_statements T_RBRACE    { symtab_leave_scope();};
-main_function :             main_header T_LBRACE decl_statements T_RBRACE   { symtab_leave_scope();};
-main_header :               T_INT T_MAIN  T_LPAREN T_RPAREN                 {symtab_enter_scope();}   
+main_function :             main_header T_LBRACE decl_statements T_RBRACE   { symtab_leave_scope();current_function_type = NULL;};
+main_header :               T_INT T_MAIN  T_LPAREN T_RPAREN                 { current_function_type = type_int; symtab_enter_scope();}   
                             | error T_MAIN  T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
                             | T_INT error   T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
                             | T_INT T_MAIN  error       T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
