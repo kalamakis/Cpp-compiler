@@ -9,3 +9,11 @@ lex.yy.c
 comp.output 
 comp.tab.c
 comp.tab.h
+
+syntaxExtreme/parser 
+syntaxExtreme/syntax.tab.c 
+syntaxExtreme/syntax.tab.h 
+syntaxExtreme/lex.yy.c
+syntaxExtreme/comp.output 
+syntaxExtreme/comp.tab.c
+syntaxExtreme/comp.tab.h
