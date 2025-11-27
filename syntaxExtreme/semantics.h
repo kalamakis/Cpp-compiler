@@ -35,16 +35,23 @@ Type *sem_find_list_element_type(Type *acc, Type *elem, int line);
 
 Type *sem_index(Type *arrayType, Type *indexType, int lineno);
 
+Type *sem_length(Type *exprr,int line);
+
 //FUNCTIONS
 
 Type *sem_check_function_return_type(Type *ret, int line);
 Type *sem_check_return(Type *func_type, Type *ret_type, int line);
 
 //Enums
+
 void sem_define_enum_constant(Type *enum_type, const char *name, int value, int line);
 // Lookup an enum constant by enum type and constant name
 Type *sem_use_enum_constant(Type *enum_type, const char *const_name, int line);
 
 
+
+//STATEMENTS
+
+Type *sem_check_condition(Type *cond, int line);
 
 #endif

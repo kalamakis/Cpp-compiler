@@ -37,7 +37,7 @@ int is_basic(TypeKind k){
     return (k == TYPE_INT || k == TYPE_FLOAT ||k == TYPE_CHAR ||k == TYPE_STRING);
 }
 int is_numeric(TypeKind k){
-    return (k == TYPE_INT || k == TYPE_FLOAT || k == TYPE_ENUM);
+    return (k == TYPE_INT || k == TYPE_FLOAT);
 }
 int is_enum(TypeKind k){
     return (k == TYPE_ENUM);
@@ -58,14 +58,14 @@ bool types_compatible_for_assignment(Type *lhs, Type *rhs) {
 
     if (lhs == rhs) return true;
 
-    /* 2. Αριθμητικοί τύποι: int ↔ float επιτρέπεται */
-    if (is_numeric(lhs->kind) && is_numeric(rhs->kind)) {
-        return true;
-    }
-
     /* 3. Enums: μόνο αν είναι ο ίδιος enum τύπος */
     if (lhs->kind == TYPE_ENUM || rhs->kind == TYPE_ENUM) {
-        return lhs == rhs;
+        return (lhs->kind == TYPE_ENUM && rhs->kind == TYPE_ENUM && lhs == rhs);
+    }
+
+        /* 2. Αριθμητικοί τύποι: int ↔ float επιτρέπεται */
+    if (is_numeric(lhs->kind) && is_numeric(rhs->kind)) {
+        return true;
     }
 
     /* 4. String: μόνο string = string */
@@ -254,6 +254,8 @@ Type *sem_binary_equality(Type *left, Type *right, int line){
     return type_error;
 }
 
+//LISTS
+
 Type *sem_make_list_type(Type *elem_type, int line){
     if (!elem_type || elem_type == type_error) {
         sem_fatal("invalid element type for list (line %d)", line);
@@ -264,6 +266,13 @@ Type *sem_make_list_type(Type *elem_type, int line){
     }
 
     return make_list_type(elem_type);
+}
+
+Type *sem_length(Type *exprr,int line){
+    if (exprr && exprr != type_error && exprr->kind != TYPE_LIST && exprr->kind != TYPE_STRING) {
+        sem_fatal("length() applies only to lists or strings (line %d)", line);
+    }
+    return type_int;
 }
 
 Type *sem_index(Type *arrayType, Type *indexType, int line) {
@@ -307,7 +316,9 @@ Type *sem_check_function_return_type(Type *ret, int line) {
 
     if(ret->kind == TYPE_STRING)
         sem_fatal("function cannot return string (line %d)", line);
-    else if(is_basic(ret->kind)||ret->kind == TYPE_VOID)
+    else if(is_basic(ret->kind)||ret->kind == TYPE_VOID || ret->kind==TYPE_ENUM)
+        return ret;
+    else if(ret->kind == TYPE_LIST) // PREPEI NA EPISTREFETAI H DIEYUHNSH TOU PRVTOU STOIXEIOU
         return ret;
     else
         sem_fatal("function cannot return this type (line %d)", line); /* κλάσεις, ενώσεις, πίνακες, κτλ. */
@@ -363,4 +374,15 @@ Type *sem_use_enum_constant(Type *enum_type, const char *const_name, int line) {
     }
 
     return s->type;
+}
+
+//STATEMENTS
+
+Type *sem_check_condition(Type *cond, int line) {
+    if (!cond || cond == type_error)
+        return type_error;
+    if (cond->kind != TYPE_INT) {
+        sem_fatal("condition in if/while/for must be of type int (line %d)", line);
+    }
+    return type_int;
 }

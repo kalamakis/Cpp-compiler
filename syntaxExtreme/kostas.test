@@ -1,13 +1,11 @@
-enum Color {
-    RED = 1,
-    GREEN,
-    BLUE = 5
-};
+int a;
+float b;
 
-int main() {
-    int x;
-    x = Color.RED + Color.GREEN;
-
-
-    return x;
+int main(){
+    if (a)  {}          // ΟΚ (a: int)
+    // if (b) { }          // ΛΑΘΟΣ (b: float)
+    if (a == b) { }     // ΟΚ (a==b → int)
+    while (a) {   }     // ΟΚ
+    for (a = 0; a < 10; a = a + 1) { } // ΟΚ
+    // for (a = 0; b; a = a + 1) { }      // ΛΑΘΟΣ (b: float)
 }
