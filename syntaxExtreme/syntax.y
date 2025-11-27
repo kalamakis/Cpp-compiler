@@ -217,7 +217,7 @@ expression :                expression T_OROP expression                        
                             | variable T_INCDEC %prec POSTFIX                   { $$ = sem_unary_incdec($1, yylineno); }
                             | variable                                          {$$=$1;}
                             | variable T_LPAREN expression_list T_RPAREN        {$$=$1;}
-                            | T_LENGTH T_LPAREN general_expression T_RPAREN     {$$ = type_int;}
+                            | T_LENGTH T_LPAREN general_expression T_RPAREN     {$$=sem_length($3);}
                             | constant                                          {$$=$1;}
                             | T_LPAREN general_expression T_RPAREN              {$$=$2;}
                             | T_LPAREN standard_type T_RPAREN                   {$$=$2;}

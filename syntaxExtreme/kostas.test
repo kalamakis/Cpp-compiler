@@ -1,12 +1,10 @@
-enum Color {
-    RED = 1,
-    GREEN,
-    BLUE = 5
+enum Color { RED, GREEN, BLUE };
+
+int list L1;
+Color f() { return RED; }      // ΟΚ
+int list g() { return L1; }    // ΟΚ (λίστα)
+// string h() { return "hi"; }    // ΛΑΘΟΣ
+class C {
+    private: int x();
 };
-
-int main() {
-    int x;
-    x = RED + GREEN;
-
-    return 0;
-}
+C k() { return C(); } 

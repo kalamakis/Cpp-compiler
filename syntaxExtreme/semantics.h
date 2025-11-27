@@ -35,6 +35,8 @@ Type *sem_find_list_element_type(Type *acc, Type *elem, int line);
 
 Type *sem_index(Type *arrayType, Type *indexType, int lineno);
 
+Type *sem_length(Type *exprr);
+
 //FUNCTIONS
 
 Type *sem_check_function_return_type(Type *ret, int line);
