@@ -26,6 +26,9 @@ typedef struct Symbol {
     SymbolKind   kind;
     Type        *type;
     int          scope;
+
+    int          is_ref_param;   // για παραμέτρους συναρτησεων
+
     StorageClass storage;
     int          offset;     // θέση στο χώρο δεδομένων / frame
 

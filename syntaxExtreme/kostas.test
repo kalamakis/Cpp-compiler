@@ -1,11 +1,14 @@
 
-int foo(){}
+enum GREEN{
+    mapmapis,
+    kostas,
+    poutsa
+};
+
 
 int main(){
-    int foo;
+    int x;
 
-    foo=5;
-
-    mpampis = foo();
+    //x=GREEN.poutsa;
     return 0;
 }

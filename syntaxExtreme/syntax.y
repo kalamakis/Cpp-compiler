@@ -253,7 +253,7 @@ enum_declaration :          T_ENUM T_ID enum_body T_SEMI                        
                                                                                     }
                                                                                 }
                             ;
-enum_body :                 T_LBRACE id_list T_RBRACE                           
+enum_body :                 T_LBRACE id_list T_RBRACE ;                          
 id_list :                   id_list T_COMMA T_ID initializer                    {/* enum constants -> ακέραιοι */
                                                                                     if (!symtab_insert($3, SYM_ENUM_CONST, type_int)) {
                                                                                         YYERROR_FMT("Redeclaration of enum const '%s'", $3);
