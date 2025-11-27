@@ -1,5 +1,10 @@
 #include "types.h"
+#include "symbol.h"
+#include "symbolTable.h"
+#include "error.h"
 #include <stdlib.h>
+
+
 
 Type *type_int = NULL;
 Type *type_float = NULL;
@@ -69,5 +74,52 @@ Type *make_enum_type(const char *name){
     } else {
         t->enum_name = NULL;
     }
+    return t;
+}
+
+/* Ξεκινά η κατασκευή ενός enum */
+EnumBuilder *start_enum(const char *name)
+{
+    EnumBuilder *eb = malloc(sizeof(EnumBuilder));
+    if (!eb) return NULL;
+
+    eb->enum_type = make_enum_type(name);  // ήδη υπάρχει στον τύπο σου
+    eb->next_value = 0;
+
+    return eb;
+}
+
+/* Προσθέτει ένα enum constant */
+int add_enum_constant(EnumBuilder *eb, const char *name, int explicit_value, int has_explicit) {
+    // Έλεγχος αν η σταθερά υπάρχει ήδη στον πίνακα συμβόλων
+    Symbol *sym = symtab_lookup(name);
+    if (sym && sym->kind == SYM_ENUM_CONST && sym->type == eb->enum_type) {
+        return 0; // redeclaration
+    }
+
+    // Δημιουργία συμβόλου για τη σταθερά
+    Symbol *new_sym = symtab_insert(name, SYM_ENUM_CONST, eb->enum_type);
+    if (!new_sym) return 0;
+
+    // Ορισμός της τιμής
+    if (has_explicit) {
+        new_sym->u.enum_const.value = explicit_value;
+        eb->next_value = explicit_value + 1;
+    } else {
+        new_sym->u.enum_const.value = eb->next_value;
+        eb->next_value += 1;
+    }
+
+    return 1; // επιτυχία
+}
+
+
+
+
+/* Τέλος enum → επιστρέφει τον τελικό τύπο */
+Type *end_enum(EnumBuilder *eb)
+{
+    Type *t = eb->enum_type;
+    free(eb);
     return t;
 }

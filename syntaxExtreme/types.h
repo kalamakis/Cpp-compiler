@@ -25,6 +25,10 @@ typedef struct Type {
     char *enum_name;
 } Type;
 
+typedef struct EnumBuilder {
+    Type *enum_type;   // το TYPE_ENUM που δημιουργείται
+    int next_value;    // η επόμενη default τιμή (0,1,2,...)
+} EnumBuilder;
 
 /* Global pointers για βασικούς τύπους (θα τα κάνουμε init στο symtab_init) */
 extern Type *type_int;
@@ -44,5 +48,9 @@ Type *make_array_type(Type *elem_type, int size);
 Type *attach_nested_array(Type *left, Type *right); /* left may be NULL */
 Type *attach_array_to_base(Type *base, Type *dims); /* επιστρέφει τον τελικό τύπο */
 
+//Enums for now
 Type *make_enum_type(const char *name);
+EnumBuilder *start_enum(const char *name);
+int add_enum_constant(EnumBuilder *eb, const char *name, int value, int has_explicit);
+Type *end_enum(EnumBuilder *eb);
 #endif

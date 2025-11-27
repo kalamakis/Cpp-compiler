@@ -1,14 +1,14 @@
-
-enum GREEN{
-    mapmapis,
-    kostas,
-    poutsa
+enum Color {
+    RED = 1,
+    GREEN,
+    BLUE = 5
 };
 
+const int MAX = 10;
 
-int main(){
+int main() {
     int x;
+    x = RED + GREEN;
 
-    //x=GREEN.poutsa;
     return 0;
 }

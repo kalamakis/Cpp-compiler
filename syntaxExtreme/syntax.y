@@ -23,8 +23,11 @@
 
     static Type *current_type = NULL;
     static Type *current_function_type = NULL;
+
+    //Used to manage enums declerations
     static Type *current_enum_type = NULL;
     static int current_enum_value = 0;
+    static EnumBuilder *current_enum_builder = NULL;
     
 %}
 
@@ -249,41 +252,31 @@ list_elements:              list_elements T_COMMA assignment                    
 init_values :               init_values T_COMMA init_value
                             | init_value
                             ;
-enum_declaration :          T_ENUM T_ID                                        {Type *t = make_enum_type($2);
-                                                                                    if (!symtab_insert($2, SYM_TYPE, t)) {
+enum_declaration :          T_ENUM T_ID                                        {current_enum_builder = start_enum($2); // δική σου συνάρτηση που επιστρέφει builder
+                                                                                    if (!current_enum_builder) {
                                                                                         YYERROR_FMT("Redeclaration of enum '%s'", $2);
                                                                                     }
-                                                                                    current_enum_type = t;
-                                                                                    current_enum_value = 0;
                                                                                 }
                             enum_body T_SEMI
                                                                                 {
                                                                                     /* τελειώσαμε με το enum */
-                                                                                    current_enum_type = NULL;
-                                                                                    current_enum_value = 0;
+                                                                                    Type *t = end_enum(current_enum_builder); // επιστρέφει Type*
+                                                                                    current_enum_builder = NULL;
+                                                                                    current_enum_type = t; //Hold on to current type for parser
                                                                                 }
                             ;
 enum_body :                 T_LBRACE id_list T_RBRACE;                           
-id_list :                   id_list T_COMMA T_ID initializer                    {if (!current_enum_type) {
-                                                                                        YYERROR_FMT("internal parser error: enum constant outside enum");
+id_list :                   id_list T_COMMA T_ID initializer                    {
+                                                                                    int val = ($4 == -1) ? current_enum_builder->next_value : $4;
+                                                                                    if (!add_enum_constant(current_enum_builder, $3, val, $4 != -1)) {
+                                                                                        YYERROR_FMT("Redeclaration of enum constant '%s'", $3);
                                                                                     }
-                                                                                    int val = ($4 == -1) ? current_enum_value : $4;
-                                                                                    /* insert enum constant (as SYM_ENUM_CONST) with type = current enum type */
-                                                                                    if (!symtab_insert($3, SYM_ENUM_CONST, current_enum_type)) {
-                                                                                        YYERROR_FMT("Redeclaration of enum const '%s'", $3);
-                                                                                    }
-                                                                                    /* -- optionally: we might want to record the numeric value somewhere later --
-                                                                                    For now we just advance the sequence counter. */
-                                                                                    current_enum_value = val + 1;
                                                                                 }
-                            | T_ID initializer                                  {if (!current_enum_type) {
-                                                                                        YYERROR_FMT("internal parser error: enum constant outside enum");
+                            | T_ID initializer                                  {
+                                                                                    int val = ($2 == -1) ? current_enum_builder->next_value : $2;
+                                                                                    if (!add_enum_constant(current_enum_builder, $1, val, $2 != -1)) {
+                                                                                        YYERROR_FMT("Redeclaration of enum constant '%s'", $1);
                                                                                     }
-                                                                                    int val = ($2 == -1) ? current_enum_value : $2;
-                                                                                    if (!symtab_insert($1, SYM_ENUM_CONST, current_enum_type)) {
-                                                                                        YYERROR_FMT("Redeclaration of enum const '%s'", $1);
-                                                                                    }
-                                                                                    current_enum_value = val + 1;
                                                                                 }
                             ;
 initializer :               T_ASSIGN T_ICONST                                   {$$ = $2;} /* explicit integer initializer */
