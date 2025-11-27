@@ -345,8 +345,8 @@ field :                     var_declaration;
 
 method :                    short_func_declaration;
 
-short_func_declaration :    short_par_func_header T_SEMI                        { symtab_leave_scope(); current_function_type = NULL;}
-                            | nopar_func_header T_SEMI                          { symtab_leave_scope(); current_function_type = NULL;}  
+short_func_declaration :    short_par_func_header T_SEMI                        { symtab_leave_scope();   current_function_type = NULL;}
+                            | nopar_func_header T_SEMI                          { symtab_leave_scope();   current_function_type = NULL;}  
                             ;
 
 short_par_func_header :     func_header_start T_LPAREN parameter_types T_RPAREN 
@@ -354,7 +354,8 @@ short_par_func_header :     func_header_start T_LPAREN parameter_types T_RPAREN
 
 func_header_start :         type_with_list T_ID                                 {
                                                                                     Type *ret = sem_check_function_return_type($1, yylineno);
-                                                                                    if (!symtab_insert($2, SYM_FUNC, ret)) {
+                                                                                    Symbol *func =symtab_insert($2, SYM_FUNC, ret);
+                                                                                    if (!func) {
                                                                                         YYERROR_FMT("Redeclaration of function '%s'", $2);
                                                                                     }
                                                                                     current_function_type = ret;
@@ -389,9 +390,9 @@ init_variabledef :          variabledef initializer;
 func_declaration :          short_func_declaration
                             | full_func_declaration;
 
-full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRACE                      { symtab_leave_scope(); current_function_type = NULL;};
-                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { symtab_leave_scope(); current_function_type = NULL;};
-                            | nopar_func_header T_LBRACE  decl_statements T_RBRACE                      { symtab_leave_scope(); current_function_type = NULL;};
+full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRACE                      { symtab_leave_scope();   current_function_type = NULL;};
+                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { symtab_leave_scope();   current_function_type = NULL;};
+                            | nopar_func_header T_LBRACE  decl_statements T_RBRACE                      { symtab_leave_scope();   current_function_type = NULL;};
                             ;
 full_par_func_header :      class_func_header_start T_LPAREN parameter_list T_RPAREN
                             | func_header_start T_LPAREN parameter_list T_RPAREN
@@ -470,7 +471,7 @@ out_list :                  out_list T_OUT out_item
                             ;
 out_item :                  general_expression;
 comp_statement :            T_LBRACE {symtab_enter_scope();} decl_statements T_RBRACE    { symtab_leave_scope();};
-main_function :             main_header T_LBRACE decl_statements T_RBRACE   { symtab_leave_scope();current_function_type = NULL;};
+main_function :             main_header T_LBRACE decl_statements T_RBRACE   { symtab_leave_scope();  current_function_type = NULL;};
 main_header :               T_INT T_MAIN  T_LPAREN T_RPAREN                 { current_function_type = type_int; symtab_enter_scope();}   
                             | error T_MAIN  T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
                             | T_INT error   T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
