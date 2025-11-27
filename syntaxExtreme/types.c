@@ -60,3 +60,14 @@ Type *attach_array_to_base(Type *base, Type *dims) {
     t->elem_type = base;
     return dims;
 }
+
+Type *make_enum_type(const char *name){
+    Type *t = make_simple_type(TYPE_ENUM);
+    if (!t) return NULL;
+    if (name) {
+        t->enum_name = strdup(name); /* θυμόμαστε το όνομα (ελαφριά υλοποίηση) */
+    } else {
+        t->enum_name = NULL;
+    }
+    return t;
+}

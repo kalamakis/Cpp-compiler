@@ -22,7 +22,7 @@ Type *sem_use_variable(const char *name, int line){
         sem_fatal("undeclared identifier '%s' at line %d", name, line);
     }
 
-    if (s->kind != SYM_VAR && s->kind != SYM_CONST && s->kind != SYM_PARAM) {
+    if (s->kind != SYM_VAR && s->kind != SYM_CONST && s->kind != SYM_PARAM && s->kind != SYM_ENUM_CONST) {
         sem_fatal("'%s' is not a variable at line %d", name, line);
     }
 
@@ -338,4 +338,15 @@ Type *sem_check_return(Type *func_type, Type *ret_type, int line) {
     sem_check_assignment(func_type, ret_type, line);
 
     return func_type;
+}
+
+//ENUMS
+void sem_define_enum_constant(Type *enum_type, const char *name, int value, int line) {
+    if (!enum_type || enum_type->kind != TYPE_ENUM) {
+        sem_fatal("internal: sem_define_enum_constant called with non-enum (line %d)", line);
+    }
+    if (!symtab_insert(name, SYM_ENUM_CONST, enum_type)) {
+        sem_fatal("Redeclaration of enum const '%s' (line %d)", name, line);
+    }
+    /* Todo όταν μπορούμε να ελέγχει τις τιμές μέσα στο enum. Προσθήκη value σε symbol στο ASTS*/
 }
