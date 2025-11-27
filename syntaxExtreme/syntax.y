@@ -263,7 +263,7 @@ enum_declaration :          T_ENUM T_ID                                        {
                                                                                     current_enum_value = 0;
                                                                                 }
                             ;
-enum_body :                 T_LBRACE id_list T_RBRACE                           
+enum_body :                 T_LBRACE id_list T_RBRACE;                           
 id_list :                   id_list T_COMMA T_ID initializer                    {if (!current_enum_type) {
                                                                                         YYERROR_FMT("internal parser error: enum constant outside enum");
                                                                                     }

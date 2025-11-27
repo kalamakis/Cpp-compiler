@@ -13,18 +13,12 @@ enum Status {
 };
 
 int main() {
-    Color c;
     Status s;
-    int GREEN;
+    Color c;
+    int malakas;
 
-    c = GREEN;
+    c = BLUE;
 
-    // πρέπει να βρει: GREEN είναι enum constant του Color
-
-    // c = YELLOW;   // implicit value = 11
-
-    // s = FAIL;     // implicit = 2
-    // s = RETRY;    // implicit = 6
 
     return 0;
 }
