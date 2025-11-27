@@ -282,7 +282,7 @@ parent :                    T_COLON T_ID                                        
                                                                                         YYERROR_FMT("Unknown base class '%s'", $2);
                                                                                     }
                                                                                 }
-                            | %empty         {;}    
+                            | %empty                                            {;}    
                             ;                           
 members_methods :           members_methods access member_or_method
                             | access member_or_method

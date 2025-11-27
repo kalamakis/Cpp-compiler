@@ -1,27 +1,11 @@
-// int f() {
-//     int x;
-//     return x;
-// }
 
-void f() {
-    int x;
-    return ;
-}
+int foo(){}
 
-// string g() {
-//     string x;
-//     return x;
-// }
+int main(){
+    int foo;
 
-// int h() {
-//     return;
-// }
+    foo=5;
 
-// void bad() {
-//     return 3;
-// }
-
-int main() {
-    int f;
+    mpampis = foo();
     return 0;
 }
