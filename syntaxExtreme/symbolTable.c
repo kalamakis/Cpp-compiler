@@ -68,6 +68,8 @@ Symbol *symtab_insert(const char *name, SymbolKind kind, Type *type)
     sym->kind   = kind;
     sym->type   = type;
     sym->scope  = current_scope;
+
+    sym->is_ref_param = 0;
     sym->storage = (current_scope == 0) ? STOR_GLOBAL : STOR_LOCAL;
     sym->offset = -1;
 
