@@ -217,7 +217,7 @@ expression :                expression T_OROP expression                        
                             | variable T_INCDEC %prec POSTFIX                   { $$ = sem_unary_incdec($1, yylineno); }
                             | variable                                          {$$=$1;}
                             | variable T_LPAREN expression_list T_RPAREN        {$$=$1;}
-                            | T_LENGTH T_LPAREN general_expression T_RPAREN     {$$=sem_length($3);}
+                            | T_LENGTH T_LPAREN general_expression T_RPAREN     {$$=sem_length($3, yylineno);}
                             | constant                                          {$$=$1;}
                             | T_LPAREN general_expression T_RPAREN              {$$=$2;}
                             | T_LPAREN standard_type T_RPAREN                   {$$=$2;}
@@ -448,12 +448,18 @@ statement :                 expression_statement
                             | T_SEMI
                             ;
 expression_statement :      general_expression T_SEMI;
-if_statement :              T_IF T_LPAREN general_expression T_RPAREN statement if_tail;
+if_statement :              T_IF T_LPAREN general_expression T_RPAREN                       { sem_check_condition($3, yylineno); } 
+                            statement if_tail
+                            ;
 if_tail:                    T_ELSE statement
                             | %empty          %prec LOWER_THAN_ELSE  {;}
                             ;
-while_statement :           T_WHILE T_LPAREN general_expression T_RPAREN statement;
-for_statement :             T_FOR T_LPAREN optexpr T_SEMI optexpr T_SEMI optexpr T_RPAREN statement;
+while_statement :           T_WHILE T_LPAREN general_expression T_RPAREN                    { sem_check_condition($3, yylineno); } 
+                            statement
+                            ;
+for_statement :             T_FOR T_LPAREN optexpr T_SEMI optexpr                           { sem_check_condition($5, yylineno); }
+                            T_SEMI optexpr T_RPAREN statement
+                            ;
 optexpr :                   general_expression                                              {$$ = $1;}
                             | %empty                                                        {$$ = type_void;}
                             ;

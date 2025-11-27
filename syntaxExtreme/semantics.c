@@ -268,9 +268,9 @@ Type *sem_make_list_type(Type *elem_type, int line){
     return make_list_type(elem_type);
 }
 
-Type *sem_length(Type *exprr){
+Type *sem_length(Type *exprr,int line){
     if (exprr && exprr != type_error && exprr->kind != TYPE_LIST && exprr->kind != TYPE_STRING) {
-        sem_fatal("length() applies only to lists or strings (line %d)", yylineno);
+        sem_fatal("length() applies only to lists or strings (line %d)", line);
     }
     return type_int;
 }
@@ -360,4 +360,16 @@ void sem_define_enum_constant(Type *enum_type, const char *name, int value, int 
         sem_fatal("Redeclaration of enum const '%s' (line %d)", name, line);
     }
     /* Todo όταν μπορούμε να ελέγχει τις τιμές μέσα στο enum. Προσθήκη value σε symbol στο ASTS*/
+}
+
+
+//STATEMENTS
+
+Type *sem_check_condition(Type *cond, int line) {
+    if (!cond || cond == type_error)
+        return type_error;
+    if (cond->kind != TYPE_INT) {
+        sem_fatal("condition in if/while/for must be of type int (line %d)", line);
+    }
+    return type_int;
 }

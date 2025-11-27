@@ -1,10 +1,11 @@
-enum Color { RED, GREEN, BLUE };
+int a;
+float b;
 
-int list L1;
-Color f() { return RED; }      // ΟΚ
-int list g() { return L1; }    // ΟΚ (λίστα)
-// string h() { return "hi"; }    // ΛΑΘΟΣ
-class C {
-    private: int x();
-};
-C k() { return C(); } 
+int main(){
+    if (a)  {}          // ΟΚ (a: int)
+    // if (b) { }          // ΛΑΘΟΣ (b: float)
+    if (a == b) { }     // ΟΚ (a==b → int)
+    while (a) {   }     // ΟΚ
+    for (a = 0; a < 10; a = a + 1) { } // ΟΚ
+    // for (a = 0; b; a = a + 1) { }      // ΛΑΘΟΣ (b: float)
+}
