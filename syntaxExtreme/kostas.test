@@ -6,7 +6,8 @@ enum Color {
 
 int main() {
     int x;
-    x = RED + GREEN;
+    x = Color.RED + Color.GREEN;
 
-    return 0;
+
+    return x;
 }

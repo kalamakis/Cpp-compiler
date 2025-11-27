@@ -87,15 +87,17 @@ EnumBuilder *start_enum(const char *name)
     return eb;
 }
 
-/* Προσθέτει ένα enum constant */
+/* Προσθέτει ένα enum constant και το καταχωρεί στη symbol table με fullname */
 int add_enum_constant(EnumBuilder *eb, const char *name, int explicit_value, int has_explicit) {
-    // Έλεγχος αν η σταθερά υπάρχει ήδη στον πίνακα συμβόλων
+    if (!eb || !eb->enum_type) return 0;
+
+    // Έλεγχος αν η σταθερά υπάρχει ήδη στον πίνακα συμβόλων για τον ίδιο enum τύπο
     Symbol *sym = symtab_lookup(name);
     if (sym && sym->kind == SYM_ENUM_CONST && sym->type == eb->enum_type) {
         return 0; // redeclaration
     }
 
-    // Δημιουργία συμβόλου για τη σταθερά
+    // Δημιουργία συμβόλου για τη σταθερά με απλό όνομα
     Symbol *new_sym = symtab_insert(name, SYM_ENUM_CONST, eb->enum_type);
     if (!new_sym) return 0;
 
@@ -110,9 +112,6 @@ int add_enum_constant(EnumBuilder *eb, const char *name, int explicit_value, int
 
     return 1; // επιτυχία
 }
-
-
-
 
 /* Τέλος enum → επιστρέφει τον τελικό τύπο */
 Type *end_enum(EnumBuilder *eb)

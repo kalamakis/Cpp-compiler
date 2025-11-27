@@ -42,6 +42,9 @@ Type *sem_check_return(Type *func_type, Type *ret_type, int line);
 
 //Enums
 void sem_define_enum_constant(Type *enum_type, const char *name, int value, int line);
+// Lookup an enum constant by enum type and constant name
+Type *sem_use_enum_constant(Type *enum_type, const char *const_name, int line);
+
 
 
 #endif

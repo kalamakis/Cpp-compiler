@@ -224,7 +224,13 @@ expression :                expression T_OROP expression                        
                             | listexpression                                    {$$=$1;}
                             ;
 variable :                  variable T_LBRACK general_expression T_RBRACK       {$$ = sem_index($1, $3, yylineno);}
-                            | variable T_DOT T_ID                               {$$= type_error;} //for classes/unions later //{symtab_insert($3, SYM_VAR, NULL);}
+                            | variable T_DOT T_ID                               {
+                                                                                    if (is_enum($1->kind)) {
+                                                                                        $$ = sem_use_enum_constant($1, $3, yylineno);
+                                                                                    } else {
+                                                                                        $$ = type_error; // για κλάσεις/union αργότερα
+                                                                                    }
+                                                                                } //for classes/unions later //{symtab_insert($3, SYM_VAR, NULL);}
                             | T_LISTFUNC T_LPAREN general_expression T_RPAREN   {$$= type_error;}
                             | decltype T_ID                                     {$$ = sem_use_variable($2, yylineno); }
                             | T_THIS                                            {$$= type_error;} // for classes later
@@ -256,13 +262,11 @@ enum_declaration :          T_ENUM T_ID                                        {
                                                                                     if (!current_enum_builder) {
                                                                                         YYERROR_FMT("Redeclaration of enum '%s'", $2);
                                                                                     }
-
                                                                                     //Include enum type on global scope
                                                                                     Symbol *etype = symtab_insert($2, SYM_TYPE, current_enum_builder->enum_type);
                                                                                     if (!etype) {
                                                                                         YYERROR_FMT("Redeclaration of enum type '%s'", $2);
                                                                                     }
-                                                                                    //Ίσως χρειαστεί να το ορίζουμε πάντα στο global scope.
                                                                                 }
                             enum_body T_SEMI
                                                                                 {
@@ -279,7 +283,7 @@ id_list :                   id_list T_COMMA T_ID initializer                    
                                                                                         YYERROR_FMT("Redeclaration of enum constant '%s'", $3);
                                                                                     }
                                                                                 }
-                            | T_ID initializer                                  {
+                            | T_ID initializer                                  { 
                                                                                     int val = ($2 == -1) ? current_enum_builder->next_value : $2;
                                                                                     if (!add_enum_constant(current_enum_builder, $1, val, $2 != -1)) {
                                                                                         YYERROR_FMT("Redeclaration of enum constant '%s'", $1);

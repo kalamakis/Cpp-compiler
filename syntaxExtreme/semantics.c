@@ -350,3 +350,17 @@ void sem_define_enum_constant(Type *enum_type, const char *name, int value, int 
     }
     /* Todo όταν μπορούμε να ελέγχει τις τιμές μέσα στο enum. Προσθήκη value σε symbol στο ASTS*/
 }
+
+Type *sem_use_enum_constant(Type *enum_type, const char *const_name, int line) {
+    if (!enum_type || enum_type->kind != TYPE_ENUM) {
+        sem_fatal("internal: sem_use_enum_constant called with non-enum (line %d)", line);
+    }
+
+    Symbol *s = symtab_lookup(const_name); // Αναζητούμε απευθείας με το όνομα της σταθεράς
+    if (!s || s->kind != SYM_ENUM_CONST || s->type != enum_type) {
+        sem_fatal("unknown enum constant '%s' (line %d)", const_name, line);
+        return type_error;
+    }
+
+    return s->type;
+}
