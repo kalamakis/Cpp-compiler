@@ -68,8 +68,12 @@ Symbol *symtab_insert(const char *name, SymbolKind kind, Type *type)
     sym->kind   = kind;
     sym->type   = type;
     sym->scope  = current_scope;
-
+    //parameters
     sym->is_ref_param = 0;
+    sym->u.func.param_count   = 0;
+    sym->u.func.params        = NULL;
+    sym->u.func.is_forward_decl = 0;
+
     sym->storage = (current_scope == 0) ? STOR_GLOBAL : STOR_LOCAL;
     sym->offset = -1;
 
@@ -94,6 +98,21 @@ Symbol *symtab_lookup_current(const char *name)
     if (sym && sym->scope == current_scope)
         return sym;
     return NULL;
+}
+
+void func_add_param(Symbol *func, Symbol *param) {
+    if (!func || func->kind != SYM_FUNC || !param) return;
+
+    int n = func->u.func.param_count;
+    Symbol **new_arr = realloc(func->u.func.params, (n + 1) * sizeof(Symbol*));
+    if (!new_arr) {
+        fprintf(stderr, "Out of memory while adding parameter '%s'\n", param->name);
+        exit(EXIT_FAILURE);
+    }
+
+    func->u.func.params = new_arr;
+    func->u.func.params[n] = param;
+    func->u.func.param_count++;
 }
 
 void symtab_print(void)
