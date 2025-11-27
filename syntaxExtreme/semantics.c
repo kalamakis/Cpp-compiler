@@ -37,7 +37,7 @@ int is_basic(TypeKind k){
     return (k == TYPE_INT || k == TYPE_FLOAT ||k == TYPE_CHAR ||k == TYPE_STRING);
 }
 int is_numeric(TypeKind k){
-    return (k == TYPE_INT || k == TYPE_FLOAT);
+    return (k == TYPE_INT || k == TYPE_FLOAT || k == TYPE_ENUM);
 }
 int is_enum(TypeKind k){
     return (k == TYPE_ENUM);

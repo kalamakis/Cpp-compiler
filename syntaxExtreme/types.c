@@ -4,8 +4,6 @@
 #include "error.h"
 #include <stdlib.h>
 
-
-
 Type *type_int = NULL;
 Type *type_float = NULL;
 Type *type_char = NULL;

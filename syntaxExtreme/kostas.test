@@ -4,8 +4,6 @@ enum Color {
     BLUE = 5
 };
 
-const int MAX = 10;
-
 int main() {
     int x;
     x = RED + GREEN;

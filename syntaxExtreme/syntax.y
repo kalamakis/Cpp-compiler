@@ -256,6 +256,13 @@ enum_declaration :          T_ENUM T_ID                                        {
                                                                                     if (!current_enum_builder) {
                                                                                         YYERROR_FMT("Redeclaration of enum '%s'", $2);
                                                                                     }
+
+                                                                                    //Include enum type on global scope
+                                                                                    Symbol *etype = symtab_insert($2, SYM_TYPE, current_enum_builder->enum_type);
+                                                                                    if (!etype) {
+                                                                                        YYERROR_FMT("Redeclaration of enum type '%s'", $2);
+                                                                                    }
+                                                                                    //Ίσως χρειαστεί να το ορίζουμε πάντα στο global scope.
                                                                                 }
                             enum_body T_SEMI
                                                                                 {
