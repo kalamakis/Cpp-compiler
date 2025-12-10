@@ -160,3 +160,19 @@ ASTNode *ast_make_return(ASTNode *expr, int line)
     n->u.ret_stmt.expr = expr;
     return n;
 }
+
+ASTNode *ast_make_call(ASTNode *func, ASTNode *args, Type *t, int line)
+{
+    ASTNode *n = ast_new(AST_CALL, t, line);
+    n->u.call.func = func;
+    n->u.call.args = args;   // usually a list node or NULL
+    return n;
+}
+
+ASTNode *ast_make_index(ASTNode *array, ASTNode *index, Type *t, int line)
+{
+    ASTNode *n = ast_new(AST_INDEX, t, line);
+    n->u.index.array = array;
+    n->u.index.index = index;
+    return n;
+}

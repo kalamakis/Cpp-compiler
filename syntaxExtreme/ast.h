@@ -22,6 +22,7 @@ typedef enum {
     AST_CONST,
     AST_LIST,
 
+    AST_INDEX,
     // ... later: classes, enums, etc.
 } ASTKind;
 
@@ -33,6 +34,8 @@ typedef enum {
     OP_NOT,
     OP_PRE_INC, OP_PRE_DEC,
     OP_POST_INC, OP_POST_DEC,
+    OP_SIZEOF,      
+    OP_LENGTH
 } ASTOp;
 
 typedef struct ASTNode {
@@ -86,5 +89,9 @@ ASTNode *ast_make_if(ASTNode *cond, ASTNode *then_part, ASTNode *else_part, int 
 ASTNode *ast_make_while(ASTNode *cond, ASTNode *body, int line);
 ASTNode *ast_make_for(ASTNode *init, ASTNode *cond, ASTNode *step, ASTNode *body, int line);
 ASTNode *ast_make_return(ASTNode *expr, int line);
+
+ASTNode *ast_make_call(ASTNode *func, ASTNode *args, Type *t, int line);
+
+ASTNode *ast_make_index(ASTNode *array, ASTNode *index, Type *t, int line);
 
 #endif

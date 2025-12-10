@@ -74,15 +74,38 @@ binary_digits "1"{binary_digit}*
 "MAIN"                                          {t_print(T_MAIN); return T_MAIN;}
 "THIS"                                          {t_print(T_THIS); return T_THIS;}
 "SIZEOF"                                        {t_print(T_SIZEOP); return T_SIZEOP;}
-
-"||"                                            {t_print(T_OROP); return T_OROP;}
-"&&"                                            {t_print(T_ANDOP); return T_ANDOP;}
-"=="|"!="                                       {t_print(T_EQUOP); return T_EQUOP;}
-">="|"<="|">"|"<"                               {t_print(T_RELOP); return T_RELOP;}
-"+"|"-"                                         {t_print(T_ADDOP); return T_ADDOP;}
-"*"|"/"|"%"                                     {t_print(T_MULOP); return T_MULOP;}
-"!"                                             {t_print(T_NOTOP); return T_NOTOP;}
-"++"|"--"                                       {t_print(T_INCDEC); return T_INCDEC;}
+"||"                                            {
+                                                    yylval.strval = strdup(yytext);
+                                                    t_print(T_OROP); return T_OROP;
+                                                }
+"&&"                                            {
+                                                    yylval.strval = strdup(yytext);
+                                                    t_print(T_ANDOP); return T_ANDOP;
+                                                }
+"=="|"!="                                       {
+                                                    yylval.strval = strdup(yytext);
+                                                    t_print(T_EQUOP); return T_EQUOP;
+                                                }
+">="|"<="|">"|"<"                               {
+                                                    yylval.strval = strdup(yytext);
+                                                    t_print(T_RELOP); return T_RELOP;
+                                                }
+"+"|"-"                                         {
+                                                    yylval.strval = strdup(yytext);
+                                                    t_print(T_ADDOP); return T_ADDOP;
+                                                }
+"*"|"/"|"%"                                     {
+                                                    yylval.strval = strdup(yytext);
+                                                    t_print(T_MULOP); return T_MULOP;
+                                                }
+"!"                                             {
+                                                    yylval.strval = strdup(yytext);
+                                                    t_print(T_NOTOP); return T_NOTOP;
+                                                }
+"++"|"--"                                       {
+                                                    yylval.strval = strdup(yytext);
+                                                    t_print(T_INCDEC); return T_INCDEC;
+                                                }
 "("                                             {t_print(T_LPAREN); return T_LPAREN;}
 ")"                                             {t_print(T_RPAREN); return T_RPAREN;}
 ";"                                             {t_print(T_SEMI); return T_SEMI;}

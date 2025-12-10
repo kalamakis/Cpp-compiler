@@ -92,14 +92,14 @@
 %token <floatval>   T_FCONST            "fconst"
 %token <strval>     T_SCONST            "sconst"
 %token <charval>    T_CCONST            "cconst"
-%token T_OROP               "orop"
-%token T_ANDOP              "andop"
-%token T_EQUOP              "equop"
-%token T_RELOP              "relop"
-%token T_ADDOP              "addop"
-%token T_MULOP              "mulop"
-%token T_NOTOP              "notop"
-%token T_INCDEC             "incdec"
+%token <strval>     T_OROP               "orop"
+%token <strval>     T_ANDOP              "andop"
+%token <strval>     T_EQUOP              "equop"
+%token <strval>     T_RELOP              "relop"
+%token <strval>     T_ADDOP              "addop"
+%token <strval>     T_MULOP              "mulop"
+%token <strval>     T_NOTOP              "notop"
+%token <strval>     T_INCDEC             "incdec"
 %token T_SIZEOP             "sizeop"
 %token T_LISTFUNC           "listfunc"
 %token T_LPAREN             "lparen"
@@ -127,13 +127,14 @@
 // %type <strval> full_func_declaration full_par_func_header class_func_header_start func_class parameter_list pass_variabledef nopar_class_func_header
 // %type <strval> decl_statements declarations decltype statements statement expression_statement if_statement if_tail while_statement for_statement optexpr
 // %type <strval> return_statement io_statement in_list in_item out_list out_item comp_statement main_function main_header
-%type <type> typename standard_type expression_list list_elements type_with_list dims dim optexpr
+%type <type> typename standard_type list_elements type_with_list dims dim optexpr
 %type <intval> listspec initializer
 
-%type <expr> expression general_expression assignment variable constant listexpression
-%type <stmt> statement if_statement if_tail while_statement for_statement return_statement comp_statement
-%type <stmt> statements decl_statements
+%type <expr> expression general_expression assignment variable constant listexpression expression_list
+%type <stmt> statement if_statement if_tail while_statement for_statement return_statement comp_statement io_statement expression_statement 
+%type <stmt> statements decl_statements main_function program 
  
+
 %left T_COMMA
 %right T_ASSIGN
 %left T_OROP
@@ -236,78 +237,133 @@ expression :                expression T_OROP expression                        
                                                                                 }
                             | expression T_ANDOP expression                     {
                                                                                     Type *t = sem_binary_logical($1.expr.type, $3.expr.type, yylineno);
-                                                                                    ASTOp op = /* map T_ADDOP text/enum to OP_ADD or OP_SUB */;
+                                                                                    ASTOp op = OP_AND;
                                                                                     $$.expr.node = ast_make_binop(op, $1.expr.node, $3.expr.node, t, yylineno);
                                                                                     $$.expr.type = t;
                                                                                 }
                             | expression T_EQUOP expression                     {
                                                                                     Type *t = sem_binary_equality($1.expr.type, $3.expr.type, yylineno);
-                                                                                    ASTOp op = /* map T_ADDOP text/enum to OP_ADD or OP_SUB */;
+                                                                                    ASTOp op;
+                                                                                    if (strcmp($2, "==") == 0) op = OP_EQ;
+                                                                                    else op = OP_NE;
                                                                                     $$.expr.node = ast_make_binop(op, $1.expr.node, $3.expr.node, t, yylineno);
                                                                                     $$.expr.type = t;
                                                                                 }
                             | expression T_RELOP expression                     {
                                                                                     Type *t = sem_binary_relational($1.expr.type, $3.expr.type, yylineno);
-                                                                                    ASTOp op = /* map T_ADDOP text/enum to OP_ADD or OP_SUB */;
+                                                                                    ASTOp op;
+                                                                                    if (strcmp($2, "<") == 0) op = OP_LT;
+                                                                                    else if (strcmp($2, "<=") == 0) op = OP_LE;
+                                                                                    else if (strcmp($2, ">") == 0) op = OP_GT;
+                                                                                    else op = OP_GE;
                                                                                     $$.expr.node = ast_make_binop(op, $1.expr.node, $3.expr.node, t, yylineno);
                                                                                     $$.expr.type = t;
                                                                                 }
                             | expression T_ADDOP expression                     {   
                                                                                     Type *t = sem_binary_arith($1.expr.type, $3.expr.type, yylineno);
-                                                                                    ASTOp op = /* map T_ADDOP text/enum to OP_ADD or OP_SUB */;
+                                                                                    ASTOp op;
+                                                                                    if (strcmp($2, "+") == 0) op = OP_ADD;
+                                                                                    else op = OP_SUB;
                                                                                     $$.expr.node = ast_make_binop(op, $1.expr.node, $3.expr.node, t, yylineno);
                                                                                     $$.expr.type = t;
                                                                                 }
                             | expression T_MULOP expression                     {   
                                                                                     Type *t = sem_binary_arith($1.expr.type, $3.expr.type, yylineno);
-                                                                                    ASTOp op = /* map T_ADDOP text/enum to OP_ADD or OP_SUB */;
+                                                                                    ASTOp op;
+                                                                                    if (strcmp($2, "*") == 0) op = OP_MUL;
+                                                                                    else if(strcmp($2, "/") == 0) op = OP_DIV;
+                                                                                    else op = OP_MOD;
                                                                                     $$.expr.node = ast_make_binop(op, $1.expr.node, $3.expr.node, t, yylineno);
                                                                                     $$.expr.type = t;
                                                                                 }
-                            | T_NOTOP expression                                {Type *t = sem_unary_not($2, yylineno);
-                                                                                    $$.expr.type = t; }
-                            | T_ADDOP expression                                {Type *t = sem_unary_not($2, yylineno); 
-                                                                                    $$.expr.type = t;}
-                            | T_SIZEOP expression                               {$$.expr.type = type_int; }
-                            | T_INCDEC variable %prec PREFIX                    {Type *t = sem_unary_incdec($2.expr.type, yylineno); $$.expr.type = t; }
-                            | variable T_INCDEC %prec POSTFIX                   {Type *t = sem_unary_incdec($1.expr.type, yylineno); $$.expr.type = t;}
-                            | variable                                          {$$.expr.type=$1.expr.type;}
-                            | variable T_LPAREN expression_list T_RPAREN        {$$.expr.type=$1.expr.type;}
-                            | T_LENGTH T_LPAREN general_expression T_RPAREN     {Type *t=sem_length($3.expr.type, yylineno);}
-                            | constant                                          {$$.expr.type=$1.expr.type;}
-                            | T_LPAREN general_expression T_RPAREN              {$$.expr.type=$2.expr.type;}
-                            | T_LPAREN standard_type T_RPAREN                   {$$.expr.type=$2.expr.type;}
-                            | listexpression                                    {$$.expr.type=$1.expr.type;}
-                            ;
-variable :                  variable T_LBRACK general_expression T_RBRACK       {$$.expr.type = sem_index($1.expr.type, $3.expr.type, yylineno);}
-                            | variable T_DOT T_ID                               {
-                                                                                    if (is_enum($1.expr.type->kind)) {
-                                                                                        $$.expr.type = sem_use_enum_constant($1.expr.type, $3.expr.type, yylineno);
-                                                                                    } else {
-                                                                                        $$.expr.type = type_error; // για κλάσεις/union αργότερα
-                                                                                    }
-                                                                                } //for classes/unions later //{symtab_insert($3, SYM_VAR, NULL);}
-                            | T_LISTFUNC T_LPAREN general_expression T_RPAREN   {$$.expr.type= type_error;}
-                            | decltype T_ID                                     {
-                                                                                    Type *t = sem_use_variable($2.expr.type, yylineno);
-                                                                                    $$.expr.node = ast_make_var($2.expr.type, t, yylineno);
+                            | T_NOTOP expression                                {
+                                                                                    Type *t = sem_unary_not($2, yylineno);
+                                                                                    ASTOp op = OP_NOT;
+                                                                                    $$.expr.node = ast_make_unop(op, $2.expr.node, t, yylineno);
+                                                                                    $$.expr.type = t; 
+                                                                                }
+                            | T_ADDOP expression                                {
+                                                                                    Type *t = sem_unary_sign($2.expr.type, yylineno);
+                                                                                    ASTOp op;
+                                                                                    if (strcmp($1, "+") == 0) op = OP_ADD;
+                                                                                    else op = OP_SUB;
+                                                                                    $$.expr.node = ast_make_unop(op, $2.expr.node, t, yylineno);
                                                                                     $$.expr.type = t;
                                                                                 }
-                            | T_THIS                                            {$$.expr.type= type_error;} // for classes later
+                            | T_SIZEOP expression                               {$$.expr.type = type_int; $$.expr.node = ast_make_unop(OP_SIZEOF, $2.expr.node, type_int, yylineno);}
+                            | T_INCDEC variable %prec PREFIX                    {
+                                                                                    Type *t = sem_unary_incdec($2.expr.type, yylineno);
+                                                                                    ASTOp op = (strcmp($1, "++") == 0) ? OP_PRE_INC : OP_PRE_DEC;
+                                                                                    $$.expr.type = t;
+                                                                                    $$.expr.node = ast_make_unop(op, $2.expr.node, t, yylineno);
+                                                                                }
+                            | variable T_INCDEC %prec POSTFIX                   {
+                                                                                    Type *t = sem_unary_incdec($2.expr.type, yylineno);
+                                                                                    ASTOp op = (strcmp($1, "++") == 0) ? OP_POST_INC  : OP_POST_DEC;
+                                                                                    $$.expr.type = t;
+                                                                                    $$.expr.node = ast_make_unop(op, $2.expr.node, t, yylineno);
+                                                                                }
+                            | variable                                          {$$.expr=$1.expr;}
+                            | variable T_LPAREN expression_list T_RPAREN        {   
+                                                                                    //sem_call_check TODO
+                                                                                    Type *t = $1.expr.type; 
+                                                                                    $$.expr.type = t;
+                                                                                    $$.expr.node = ast_make_call($1.expr.node, $3.expr.node, t, yylineno);
+                                                                                }
+                            | T_LENGTH T_LPAREN general_expression T_RPAREN     {
+                                                                                    Type *t = sem_length($3.expr.type, yylineno);
+                                                                                    $$.expr.type = t;
+                                                                                    $$.expr.node = ast_make_unop(OP_LENGTH, $3.expr.node, t, yylineno);
+                                                                                }
+                            | constant                                          {$$.expr = $1.expr;}
+                            | T_LPAREN general_expression T_RPAREN              {$$.expr = $2.expr;}
+                            | T_LPAREN standard_type T_RPAREN                   {$$.expr.type=$2.expr.type;}
+                            | listexpression                                    {$$.expr = $1.expr;}
                             ;
-general_expression :        general_expression T_COMMA general_expression       {$$ = $3;}
-                            | assignment                                        {$$ = $1;}
+variable :                  variable T_LBRACK general_expression T_RBRACK       {
+                                                                                    Type *t = sem_index($1.expr.type, $3.expr.type, yylineno);
+                                                                                    $$.expr.type = t;
+                                                                                    $$.expr.node = ast_make_index($1.expr.node, $3.expr.node, t, yylineno);
+                                                                                }
+                            | variable T_DOT T_ID                               {
+                                                                                    if (is_enum($1.expr.type->kind)) {
+                                                                                        Type *t = sem_use_enum_constant($1.expr.type, $3, yylineno);
+                                                                                        $$.expr.type = t;
+                                                                                        /* enum const ως expression – απλό var node με το όνομα της σταθεράς */
+                                                                                        $$.expr.node = ast_make_var($3, t, yylineno);
+                                                                                    } else {
+                                                                                        /* για classes/unions αργότερα */
+                                                                                        $$.expr.type = type_error;
+                                                                                        $$.expr.node = NULL;
+                                                                                    }
+                                                                                }//for classes/unions later //{symtab_insert($3, SYM_VAR, NULL);}
+                            | T_LISTFUNC T_LPAREN general_expression T_RPAREN   {
+                                                                                    //TODO sem_list_function_check
+                                                                                    $$.expr.type = type_error;
+                                                                                    $$.expr.node = NULL;
+                                                                                }
+                            | decltype T_ID                                     {
+                                                                                    Type *t = sem_use_variable($2, yylineno);
+                                                                                    $$.expr.type = t;
+                                                                                    $$.expr.node = ast_make_var($2, t, yylineno);
+                                                                                }
+                            | T_THIS                                            {
+                                                                                    $$.expr.type = type_error;  /* placeholder */
+                                                                                    $$.expr.node = NULL;
+                                                                                } // for classes later
+                            ;
+general_expression :        general_expression T_COMMA general_expression       { $$.expr = $3.expr;}
+                            | assignment                                        {$$.expr = $1.expr;}
                             ;
 assignment :                variable T_ASSIGN assignment                        {
                                                                                     Type *t = sem_check_assignment($1.expr.type, $3.expr.type, yylineno);
-                                                                                    ASTNode *assign = ast_make_assign($1.expr.node, $3.expr.node, t, yylineno);
-                                                                                    $$.expr.node = assign;
                                                                                     $$.expr.type = t;
+                                                                                    $$.expr.node = ast_make_assign($1.expr.node, $3.expr.node, t, yylineno);
                                                                                 }
                             | expression                                        {$$.expr = $1.expr;}
                             ;
-expression_list             :general_expression                                 {$$ = $1;}
-                            | %empty                                            {$$ = type_void;}
+expression_list             :general_expression                                 {$$.expr = $1.expr;}
+                            | %empty                                            {$$.expr.type = type_void; $$.expr.node = NULL;}
                             ;
 constant :                  T_CCONST                                            { 
                                                                                     Type *t = type_char;
@@ -508,31 +564,31 @@ pass_variabledef :          variabledef
                             ;
 nopar_class_func_header     : class_func_header_start T_LPAREN T_RPAREN ;
 
-decl_statements :           declarations statements
-                            | declarations
-                            | statements
+decl_statements :           declarations statements                             {$$.stmt.node = $2.stmt.node;}
+                            | declarations                                      {$$.stmt.node = NULL; }
+                            | statements                                        {$$.stmt.node = $1.stmt.node;}
                             | %empty         {;}
                             ;
 declarations :              declarations decltype type_with_list  variabledefs T_SEMI
                             | decltype type_with_list variabledefs T_SEMI
                             ;
 decltype :                  T_STATIC | %empty         {;};
-statements :                statements statement
-                            | statement
+statements :                statements statement                                {$$.stmt.node = $2.stmt.node;}
+                            | statement                                         { $$.stmt = $1.stmt; }
                             /* | statements error T_SEMI                           { YYERROR_FMT(" HINT:  error in statement - skipping until ';'"); yyerrok; } */
                             ;
-statement :                 expression_statement
-                            | if_statement                                                              
-                            | while_statement
-                            | for_statement
-                            | return_statement
-                            | io_statement
-                            | comp_statement
-                            | T_CONTINUE T_SEMI
-                            | T_BREAK T_SEMI
-                            | T_SEMI
+statement :                 expression_statement                                             { $$.stmt = $1.stmt; }
+                            | if_statement                                                   { $$.stmt = $1.stmt; }                                                         
+                            | while_statement                                                { $$.stmt = $1.stmt; }
+                            | for_statement                                                  { $$.stmt = $1.stmt; }
+                            | return_statement                                               { $$.stmt = $1.stmt; }
+                            | io_statement                                                   { $$.stmt = $1.stmt; }
+                            | comp_statement                                                 { $$.stmt = $1.stmt; }
+                            | T_CONTINUE T_SEMI                                              {$$.stmt.node = NULL;}
+                            | T_BREAK T_SEMI                                                 {$$.stmt.node = NULL;}
+                            | T_SEMI                                                         {$$.stmt.node = NULL;}
                             ;
-expression_statement :      general_expression T_SEMI;
+expression_statement :      general_expression T_SEMI                                        {$$.stmt.node = $1.expr.node;};
 if_statement :              T_IF T_LPAREN general_expression T_RPAREN statement if_tail    {
                                                                                                 /* type-check condition */
                                                                                                 sem_check_condition($3.expr.type, yylineno);
@@ -554,8 +610,8 @@ while_statement :           T_WHILE T_LPAREN general_expression T_RPAREN stateme
                             
                             ;
 for_statement :             T_FOR T_LPAREN optexpr T_SEMI optexpr general_expression T_RPAREN statement {
-                                                                                                            sem_check_condition($7.expr.type, yylineno);
-                                                                                                            $$.stmt.node = ast_make_for($3.expr.node, $5.expr.node, $6.expr.node, $9.stmt.node, yylineno);
+                                                                                                            sem_check_condition($6.expr.type, yylineno);
+                                                                                                            $$.stmt.node = ast_make_for($3.expr.node, $5.expr.node, $6.expr.node, $8.stmt.node, yylineno);
                                                                                                         }
                             ;
 optexpr :                   general_expression                                              {$$ = $1;}
@@ -574,8 +630,8 @@ out_list :                  out_list T_OUT out_item
                             | out_item
                             ;
 out_item :                  general_expression;
-comp_statement :            T_LBRACE {symtab_enter_scope();} decl_statements T_RBRACE    { symtab_leave_scope(); $$.stmt.node = $2.stmt.node;};
-main_function :             main_header T_LBRACE decl_statements T_RBRACE   { symtab_leave_scope();  current_function_type = NULL;};
+comp_statement :            T_LBRACE {symtab_enter_scope();} decl_statements T_RBRACE    { symtab_leave_scope(); $$.stmt.node = $3.stmt.node;};
+main_function :             main_header T_LBRACE decl_statements T_RBRACE   { symtab_leave_scope();  current_function_type = NULL; $$.stmt.node = $3.stmt.node;};
 main_header :               T_INT T_MAIN  T_LPAREN T_RPAREN                 { current_function_type = type_int; symtab_enter_scope();}   
                             | error T_MAIN  T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
                             | T_INT error   T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}

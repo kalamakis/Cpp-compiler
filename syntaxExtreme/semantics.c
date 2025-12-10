@@ -201,6 +201,16 @@ Type *sem_unary_incdec(Type *t, int line){
     return type_int;
 }
 
+Type *sem_unary_sign(Type *t, int line){
+    if (!t || t == type_error)
+        return type_error;
+
+    if (!is_numeric(t->kind)) {
+        sem_fatal("unary +/- operand must be numeric (line %d)", line);
+    }
+    return t;
+}
+
 //! && ||
 Type *sem_unary_not(Type *t, int line){
     if (!t || t == type_error)
