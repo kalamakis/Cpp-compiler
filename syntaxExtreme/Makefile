@@ -1,7 +1,7 @@
 all: parser
 
-parser: syntax.tab.c lex.yy.c hashtable.c settings.h types.h symbol.h symbolTable.h semantics.h
-	gcc -w syntax.tab.c lex.yy.c hashtable.c symbolTable.c types.c semantics.c -lfl -o parser
+parser: syntax.tab.c lex.yy.c hashtable.c settings.h types.h symbol.h symbolTable.h semantics.h astinfo.h ast.h
+	gcc -w syntax.tab.c lex.yy.c hashtable.c symbolTable.c types.c semantics.c ast.c ast_print.c -lfl -o parser
 
 syntax.tab.c: syntax.y settings.h
 	bison  -d -o syntax.tab.c syntax.y

@@ -4,6 +4,7 @@
 #include "types.h"
 #include "symbolTable.h"
 #include <stdbool.h>
+#include "ast.h"
 
 void sem_fatal(const char *fmt, ...);
 
@@ -39,7 +40,7 @@ Type *sem_index(Type *arrayType, Type *indexType, int lineno);
 Type *sem_length(Type *exprr,int line);
 
 //FUNCTIONS
-
+Type *sem_call_check(struct ASTNode *func_node, struct ASTNode *args, int line);
 Type *sem_check_function_return_type(Type *ret, int line);
 Type *sem_check_return(Type *func_type, Type *ret_type, int line);
 

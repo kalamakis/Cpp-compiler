@@ -1,11 +1,16 @@
 int a;
 float b;
 
+int foo(){
+    return 42;
+}
+
+
 int main(){
-    if (a)  {}          // ΟΚ (a: int)
-    // if (b) { }          // ΛΑΘΟΣ (b: float)
-    if (a == b) { }     // ΟΚ (a==b → int)
-    while (a) {   }     // ΟΚ
-    for (a = 0; a < 10; a = a + 1) { } // ΟΚ
-    // for (a = 0; b; a = a + 1) { }      // ΛΑΘΟΣ (b: float)
+    a=1;
+    if (a)  {
+        b = 3.14+a;
+    }
+    foo();
+    
 }

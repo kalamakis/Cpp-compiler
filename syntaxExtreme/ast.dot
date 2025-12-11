@@ -1,0 +1,7 @@
+digraph AST {
+  node [shape=box, fontsize=10];
+  n0x55d71496e7a0 [label="CALL"];
+  n0x55d71496e760 [label="VAR\nfoo"];
+  n0x55d71496e7a0 -> n0x55d71496e760 [label="func"];
+  n0x55d71496e760 [label="VAR\nfoo"];
+}

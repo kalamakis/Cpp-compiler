@@ -3,6 +3,8 @@
 #include <stdarg.h>
 #include "types.h"
 #include <stdbool.h>
+#include "ast.h"
+#include "symbol.h"
 
 #include "semantics.h"
 
@@ -22,8 +24,8 @@ Type *sem_use_variable(const char *name, int line){
         sem_fatal("undeclared identifier '%s' at line %d", name, line);
     }
 
-    if (s->kind != SYM_VAR && s->kind != SYM_CONST && s->kind != SYM_PARAM && s->kind != SYM_ENUM_CONST) {
-        sem_fatal("'%s' is not a variable at line %d", name, line);
+    if (s->kind != SYM_VAR && s->kind != SYM_CONST && s->kind != SYM_PARAM && s->kind != SYM_ENUM_CONST && s->kind != SYM_FUNC) {
+        sem_fatal("'%s' is not a variable/function at line %d", name, line);
     }
 
     if (!s->type) {
@@ -318,6 +320,32 @@ Type *sem_find_list_element_type(Type *acc, Type *elem, int line){
 }
 
 //FUNCTIONS
+
+
+Type *sem_call_check(ASTNode *func_node, ASTNode *args, int line)
+{
+    if (!func_node || func_node->kind != AST_VAR) {
+        sem_fatal("invalid function call at line %d", line);
+    }
+
+    Symbol *s = func_node->u.var.sym;
+    if (!s) {
+        sem_fatal("internal error: call without symbol at line %d", line);
+    }
+
+    if (s->kind != SYM_FUNC) {
+        sem_fatal("'%s' is not a function at line %d", s->name, line);
+    }
+
+    /* Προς το παρόν ΔΕΝ κάνουμε έλεγχο παραμέτρων (arity/types).
+       εδώ θα γίνει το matching args <-> param types. */
+
+    if (!s->type) {
+        sem_fatal("function '%s' has no return type at line %d", s->name, line);
+    }
+
+    return s->type;  // return type του function
+}
 
 Type *sem_check_function_return_type(Type *ret, int line) {
     if (!ret || ret == type_error) {

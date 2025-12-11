@@ -7,6 +7,8 @@
 #include "types.h"
 #include "symbolTable.h"   /* symtab_lookup */
 
+
+ASTNode *ast_root = NULL;
 /* Small helper for all constructors */
 static ASTNode *ast_new(ASTKind kind, Type *t, int line)
 {
