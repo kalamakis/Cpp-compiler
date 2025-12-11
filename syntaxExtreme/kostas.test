@@ -5,6 +5,9 @@ int foo(){
     return 42;
 }
 
+void bar(){
+    a = a + 1;
+}
 
 int main(){
     a=1;
@@ -12,5 +15,10 @@ int main(){
         b = 3.14+a;
     }
     foo();
+    for(a=0;a<10;a=a+1){
+        b=b+1.0;
+    }
+    bar();
+    return 0;
     
 }

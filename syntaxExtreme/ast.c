@@ -23,9 +23,42 @@ static ASTNode *ast_new(ASTKind kind, Type *t, int line)
     n->line = line;
 
     memset(&n->u, 0, sizeof n->u);
-
     return n;
 }
+
+ASTNode *ast_make_list(ASTNode *head, ASTNode *tail, int line)
+{
+    ASTNode *n = ast_new(AST_LIST, NULL, line);
+    n->u.list.head = head;
+    n->u.list.tail = tail;
+    return n;
+}
+
+ASTNode *ast_list_append(ASTNode *list, ASTNode *elem, int line)
+{
+    if (!list) return elem;
+    if (list->kind != AST_LIST) {
+        // γύρνα το μόνο στοιχείο σε λίστα [list, elem]
+        return ast_make_list(list, ast_make_list(elem, NULL, line), line);
+    }
+
+    ASTNode *cur = list;
+    while (cur->u.list.tail && cur->u.list.tail->kind == AST_LIST) {
+        cur = cur->u.list.tail;
+    }
+    cur->u.list.tail = ast_make_list(elem, NULL, line);
+    return list;
+}
+
+
+ASTNode *ast_make_program(ASTNode *globals, ASTNode *main_func, int line)
+{
+    ASTNode *n = ast_new(AST_PROGRAM, NULL, line);
+    n->u.program.globals   = globals;
+    n->u.program.main_func = main_func;
+    return n;
+}
+
 
 /* ====================  EXPRESSIONS  ==================== */
 
@@ -171,6 +204,15 @@ ASTNode *ast_make_call(ASTNode *func, ASTNode *args, Type *t, int line)
     return n;
 }
 
+ASTNode *ast_make_func_decl(char *name, ASTNode *body, int line)
+{
+    ASTNode *n = ast_new(AST_FUNC_DECL, NULL, line);
+    n->u.func_decl.name   = name;
+    n->u.func_decl.params = NULL;   // προς το παρόν
+    n->u.func_decl.body   = body;
+    return n;
+}
+
 ASTNode *ast_make_index(ASTNode *array, ASTNode *index, Type *t, int line)
 {
     ASTNode *n = ast_new(AST_INDEX, t, line);
@@ -178,3 +220,4 @@ ASTNode *ast_make_index(ASTNode *array, ASTNode *index, Type *t, int line)
     n->u.index.index = index;
     return n;
 }
+

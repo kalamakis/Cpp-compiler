@@ -21,6 +21,7 @@
 
     static Type *current_type = NULL;
     static Type *current_function_type = NULL;
+    static char *current_function_name = NULL;
     static Type *current_enum_type = NULL;
     static int current_enum_value = 0;
     static EnumBuilder *current_enum_builder = NULL;
@@ -122,7 +123,7 @@
 
 %type <expr> expression general_expression assignment variable constant listexpression expression_list optexpr
 %type <stmt> statement if_statement if_tail while_statement for_statement return_statement comp_statement io_statement expression_statement 
-%type <stmt> statements decl_statements main_function program 
+%type <stmt> statements decl_statements main_function program global_declarations global_declaration func_declaration full_func_declaration 
  
 
 %left T_COMMA
@@ -145,19 +146,21 @@
 
 program :                   global_declarations main_function                   {
                                                                                     extern ASTNode *ast_root;
-                                                                                    ast_root = $2.node;
+                                                                                    ast_root = ast_make_program($1.node, $2.node, yylineno);
                                                                                 }             
                             ;
-global_declarations :       global_declarations global_declaration
-                            | %empty         {;}
+global_declarations :       global_declarations global_declaration              {   if ($1.node) $$.node = ast_list_append($1.node, $2.node,yylineno);
+                                                                                    else $$.node = $2.node;
+                                                                                }
+                            | %empty                                            {$$.node = NULL;}
                             ;
-global_declaration :        typedef_declaration
-                            | const_declaration
-                            | enum_declaration
-                            | class_declaration
-                            | union_declaration
-                            | global_var_declaration
-                            | func_declaration
+global_declaration :        typedef_declaration                                 {$$.node = NULL;}
+                            | const_declaration                                 {$$.node = NULL;}
+                            | enum_declaration                                  {$$.node = NULL;}
+                            | class_declaration                                 {$$.node = NULL;}
+                            | union_declaration                                 {$$.node = NULL;}
+                            | global_var_declaration                            {$$.node = NULL;}
+                            | func_declaration                                  {$$.node = $1.node;}
                             /* | error T_SEMI                                      {yyerror(" HINT: syntax error in global declaration\n"); yyerrok;} */
                             /* | error T_RBRACE                                    {yyerror(" HINT: in global declaration\n"); yyerrok; } */
                             ;
@@ -530,6 +533,7 @@ func_header_start :         type_with_list T_ID                                 
                                                                                         YYERROR_FMT("Redeclaration of function '%s'", $2);
                                                                                     }
                                                                                     current_function_type = ret;
+                                                                                    current_function_name  = $2;
                                                                                     symtab_enter_scope();
                                                                                 }
                             ;
@@ -558,12 +562,23 @@ init_variabledefs :         init_variabledefs T_COMMA init_variabledef;
                             ;
 init_variabledef :          variabledef initializer;
 
-func_declaration :          short_func_declaration
-                            | full_func_declaration;
-
-full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRACE                      { symtab_leave_scope();   current_function_type = NULL;};
-                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { symtab_leave_scope();   current_function_type = NULL;};
-                            | nopar_func_header T_LBRACE  decl_statements T_RBRACE                      { symtab_leave_scope();   current_function_type = NULL;};
+func_declaration :          short_func_declaration                                                      {$$.node = NULL;}
+                            | full_func_declaration                                                     {$$.node = $1.node;}   ;                         
+full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRACE                      {
+                                                                                                            ASTNode *body = $3.node;
+                                                                                                            $$.node = ast_make_func_decl(current_function_name, body, yylineno);
+                                                                                                            symtab_leave_scope();
+                                                                                                            current_function_type = NULL;
+                                                                                                            current_function_name = NULL;
+                                                                                                        }
+                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { symtab_leave_scope();   current_function_type = NULL; $$.node = $3.node;};
+                            | nopar_func_header T_LBRACE  decl_statements T_RBRACE                      {
+                                                                                                            ASTNode *body = $3.node;
+                                                                                                            $$.node = ast_make_func_decl(current_function_name, body, yylineno);
+                                                                                                            symtab_leave_scope();
+                                                                                                            current_function_type = NULL;
+                                                                                                            current_function_name = NULL;
+                                                                                                        }
                             ;
 full_par_func_header :      class_func_header_start T_LPAREN parameter_list T_RPAREN
                             | func_header_start T_LPAREN parameter_list T_RPAREN
@@ -597,14 +612,19 @@ nopar_class_func_header     : class_func_header_start T_LPAREN T_RPAREN ;
 decl_statements :           declarations statements                             {$$.node = $2.node;}
                             | declarations                                      {$$.node = NULL; }
                             | statements                                        {$$.node = $1.node;}
-                            | %empty         {;}
+                            | %empty                                            { $$.node = NULL; }
                             ;
 declarations :              declarations decltype type_with_list  variabledefs T_SEMI
                             | decltype type_with_list variabledefs T_SEMI
                             ;
 decltype :                  T_STATIC | %empty         {;};
-statements :                statements statement                                {$$.node = $2.node;}
-                            | statement                                         { $$ = $1; }
+statements :                statements statement                                {
+                                                                                    if ($1.node)
+                                                                                        $$.node = ast_list_append($1.node, $2.node, yylineno);
+                                                                                    else
+                                                                                        $$.node = $2.node;
+                                                                                }
+                            | statement                                         { $$.node = $1.node; }
                             /* | statements error T_SEMI                           { YYERROR_FMT(" HINT:  error in statement - skipping until ';'"); yyerrok; } */
                             ;
 statement :                 expression_statement                                             { $$ = $1; }
@@ -666,8 +686,12 @@ out_list :                  out_list T_OUT out_item
                             ;
 out_item :                  general_expression;
 comp_statement :            T_LBRACE {symtab_enter_scope();} decl_statements T_RBRACE    { symtab_leave_scope(); $$.node = $3.node;};
-main_function :             main_header T_LBRACE decl_statements T_RBRACE   { symtab_leave_scope();  current_function_type = NULL; $$.node = $3.node;};
-main_header :               T_INT T_MAIN  T_LPAREN T_RPAREN                 { current_function_type = type_int; symtab_enter_scope();}   
+main_function :             main_header T_LBRACE decl_statements T_RBRACE   { symtab_leave_scope();  
+                                                                                current_function_type = NULL; 
+                                                                                ASTNode *body = $3.node;
+                                                                                $$.node = ast_make_func_decl("main", body, yylineno);
+                                                                            };
+main_header :               T_INT T_MAIN  T_LPAREN T_RPAREN                 { current_function_type = type_int; current_function_name = "main"; symtab_enter_scope();}   
                             | error T_MAIN  T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
                             | T_INT error   T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
                             | T_INT T_MAIN  error       T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
@@ -694,17 +718,7 @@ int main(int argc, char *argv[]){
 
     extern ASTNode *ast_root;
     if (ast_root) {
-        FILE *f = fopen("ast.dot", "w");
-        if (!f) {
-            perror("ast.dot");
-        } else {
-            ast_print(ast_root, f);
-            fclose(f);
-            printf("AST written to ast.dot\n");
-            system("dot -Tpdf ast.dot -o ast.pdf");
-        }
-    } else {
-        printf("No AST (parse errors?)\n");
+        ast_print(ast_root, "ast.dot");
     }
 
     fclose(yyin);

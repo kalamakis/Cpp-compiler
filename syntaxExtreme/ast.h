@@ -43,62 +43,61 @@ typedef enum {
     OP_LENGTH
 } ASTOp;
 
-/* === AST node structure === */
-struct ASTNode {
-    ASTKind kind;
-    int     line;
-    Type   *type;   /* result type for expressions, or NULL for statements */
+    /* === AST node structure === */
+    struct ASTNode {
+        ASTKind kind;
+        int     line;
+        Type   *type;   /* result type for expressions, or NULL for statements */
 
-    union {
-        /* expressions */
-        struct { ASTOp op; ASTNode *left, *right; } binop;
-        struct { ASTOp op; ASTNode *expr;        } unop;
+        union {
+            /* expressions */
+            struct { ASTOp op; struct ASTNode *left, *right; } binop;
+            struct { ASTOp op; struct ASTNode *expr; } unop;
+            struct {struct ASTNode *func; struct ASTNode *args;} call;
+            struct {char *name; struct ASTNode *params; struct ASTNode *body;} func_decl;
+            struct {
+                char           *name;
+                struct ASTNode *index;  /* για a[i] αν το χρησιμοποιήσεις έτσι */
+                struct ASTNode *field;  /* obj.field */
+                Symbol         *sym;
+            } var;
+            struct { 
+                long   ival;
+                double fval;
+                char   cval;
+                char  *sval;
+            } constant;
 
-        /* function call: func(args) – func είναι expression node (π.χ. VAR) */
-        struct { ASTNode *func; ASTNode *args; } call;
+            /* program / blocks / statements */
+            struct { struct ASTNode *globals; struct ASTNode *main_func; } program;
+            struct { struct ASTNode *decls; struct ASTNode *stmts; } block;
+            struct { struct ASTNode *lhs; struct ASTNode *rhs; } assign;
+            struct { struct ASTNode *cond; struct ASTNode *then_part; struct ASTNode *else_part; } if_stmt;
+            struct { struct ASTNode *cond; struct ASTNode *body; } while_stmt;
+            struct { struct ASTNode *init; struct ASTNode *cond; struct ASTNode *step; struct ASTNode *body; } for_stmt;
+            struct { struct ASTNode *expr; } ret_stmt;
 
-        /* variable reference */
-        struct {
-            char    *name;
-            ASTNode *index;  /* for arrays, or NULL */
-            ASTNode *field;  /* for obj.field, or NULL (future) */
-            Symbol  *sym;    /* symbol table entry */
-        } var;
+            /* index κόμβος */
+            struct { struct ASTNode *array; struct ASTNode *index;} index;
 
-        /* constants */
-        struct {
-            long   ival;
-            double fval;
-            char   cval;
-            char  *sval;
-        } constant;
+            /* λίστα */
+            struct { struct ASTNode *head; struct ASTNode *tail; } list;
+        } u;
 
-        /* block: declarations + statements */
-        struct { ASTNode *decls; ASTNode *stmts; } block;
-        /* assignment: lhs = rhs */
-        struct { ASTNode *lhs; ASTNode *rhs; } assign;
-        /* if (cond) then_part else else_part */
-        struct { ASTNode *cond; ASTNode *then_part; ASTNode *else_part; } if_stmt;
-        /* while (cond) body */
-        struct { ASTNode *cond; ASTNode *body; } while_stmt;
-        /* for (init; cond; step) body */
-        struct { ASTNode *init; ASTNode *cond; ASTNode *step; ASTNode *body; } for_stmt;
-        /* return expr; */
-        struct { ASTNode *expr; } ret_stmt;
-        /* simple list (για λίστες expr/stmt, args, κτλ) – αν το θες */
-        struct { ASTNode *head; ASTNode *tail; } list;
-        /* array indexing: array[index] */
-        struct { ASTNode *array; ASTNode *index; } index;
-    } u;
+
 };
+
+ASTNode *ast_make_list(ASTNode *head, ASTNode *tail, int line);
+ASTNode *ast_list_append(ASTNode *list, ASTNode *elem, int line);
 
 /* Global root of AST */
 extern ASTNode *ast_root;
 
 //debug  print
-void ast_print(ASTNode *root, FILE *out);
+void ast_print(ASTNode *root, const char *filename);
 
 /* Constructors */
+ASTNode *ast_make_program(ASTNode *globals, ASTNode *main_func, int line);
 
 ASTNode *ast_make_var(char *name, Type *t, int line);
 
@@ -117,6 +116,7 @@ ASTNode *ast_make_for(ASTNode *init, ASTNode *cond, ASTNode *step, ASTNode *body
 ASTNode *ast_make_return(ASTNode *expr, int line);
 
 ASTNode *ast_make_call(ASTNode *func, ASTNode *args, Type *t, int line);
+ASTNode *ast_make_func_decl(char *name, ASTNode *body, int line);
 ASTNode *ast_make_index(ASTNode *array, ASTNode *index, Type *t, int line);
 
 #endif
