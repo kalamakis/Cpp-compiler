@@ -22,6 +22,7 @@
     static Type *current_type = NULL;
     static Type *current_function_type = NULL;
     static char *current_function_name = NULL;
+    static int in_param_context = 0;
     static Type *current_enum_type = NULL;
     static int current_enum_value = 0;
     static EnumBuilder *current_enum_builder = NULL;
@@ -119,7 +120,7 @@
 // %type <strval> full_func_declaration full_par_func_header class_func_header_start func_class parameter_list pass_variabledef nopar_class_func_header
 // %type <strval> decl_statements declarations decltype statements statement expression_statement if_statement if_tail while_statement for_statement optexpr
 // %type <strval> return_statement io_statement in_list in_item out_list out_item comp_statement main_function main_header
-%type <type> typename standard_type list_elements type_with_list dims dim 
+%type <type> typename standard_type list_elements type_with_list dims dim parameter_decl parameter_list
 %type <intval> listspec initializer
 
 %type <expr> expression general_expression assignment variable constant listexpression expression_list optexpr init_value
@@ -135,8 +136,6 @@
     var_declaration variabledefs variabledef 
     init_variabledefs init_variabledef
     global_var_declaration
-    parameter_decl parameter_list
-
  
 
 %left T_COMMA
@@ -195,7 +194,7 @@ type_with_list:             typename listspec                                   
                                                                                     }
                             ;
 
-typename :                  standard_type
+typename :                  standard_type                                       {$$ = $1; current_type = $$;}
                             | T_ID                                              {Symbol *s = symtab_lookup($1);
                                                                                     if (!s || s->kind != SYM_TYPE || !s->type) {
                                                                                         YYERROR_FMT("Unknown type '%s'", $1);
@@ -203,6 +202,7 @@ typename :                  standard_type
                                                                                     } else {
                                                                                         $$ = s->type;
                                                                                     }
+                                                                                    current_type = $$; 
                                                                                 }
                             ;
 standard_type :             T_CHAR                                              {$$ = type_char;} 
@@ -220,7 +220,7 @@ dims :                      dims dim                                            
 dim :                       T_LBRACK T_ICONST T_RBRACK                          { $$ = make_array_type(NULL, $2); }
                             | T_LBRACK T_RBRACK                                 { $$ = make_array_type(NULL, 0); }
                             ;
-const_declaration :         T_CONST typename { current_type = $2; } constdefs T_SEMI
+const_declaration :         T_CONST typename constdefs T_SEMI
                             ;
 constdefs :                 constdefs T_COMMA constdef
                             | constdef
@@ -513,8 +513,13 @@ variabledefs :              variabledefs T_COMMA variabledef                    
 variabledef :               T_ID dims                                           {if (!current_type) current_type = type_error;
                                                                                     Type *t = current_type;
                                                                                     if ($2 != NULL) t = attach_array_to_base(current_type, $2);
-                                                                                    if (!symtab_insert($1, SYM_VAR, t)) {
-                                                                                        YYERROR_FMT("Redeclaration of '%s'", $1);
+                                                                                    if (in_param_context) {
+                                                                                        sem_declare_param($1, t, 0, yylineno);   /* is_ref = 0 param by value*/
+                                                                                    } else {
+                                                                                        Symbol *s = symtab_insert($1, SYM_VAR, t);
+                                                                                        if (!s) {
+                                                                                            YYERROR_FMT("Redeclaration of '%s'", $1);
+                                                                                        }
                                                                                     }
                                                                                     $$ = ast_make_var_decl($1, t, NULL, yylineno);
                                                                                 }
@@ -531,23 +536,35 @@ field :                     var_declaration;
 
 method :                    short_func_declaration;
 
-short_func_declaration :    short_par_func_header T_SEMI                        { symtab_leave_scope();   current_function_type = NULL;}
-                            | nopar_func_header T_SEMI                          { symtab_leave_scope();   current_function_type = NULL;}  
+short_func_declaration     : short_par_func_header T_SEMI                                   {
+                                                                                                symtab_leave_scope();
+                                                                                                current_function_type = NULL;
+                                                                                                current_function_name  = NULL;
+                                                                                                in_param_context = 0;
+                                                                                            }
+                            | nopar_func_header T_SEMI
+                                                                                            {
+                                                                                                symtab_leave_scope();
+                                                                                                current_function_type = NULL;
+                                                                                                current_function_name  = NULL;
+                                                                                                in_param_context = 0;
+                                                                                            }
                             ;
 
-short_par_func_header :     func_header_start T_LPAREN parameter_types T_RPAREN 
+
+short_par_func_header :     func_header_start T_LPAREN parameter_types T_RPAREN             {in_param_context = 0;}
                             ;
 
-func_header_start :         type_with_list T_ID                                 {
-                                                                                    Type *ret = sem_check_function_return_type($1, yylineno);
-                                                                                    Symbol *func =symtab_insert($2, SYM_FUNC, ret);
-                                                                                    if (!func) {
-                                                                                        YYERROR_FMT("Redeclaration of function '%s'", $2);
-                                                                                    }
-                                                                                    current_function_type = ret;
-                                                                                    current_function_name  = $2;
-                                                                                    symtab_enter_scope();
-                                                                                }
+func_header_start :         type_with_list T_ID                                             {
+                                                                                                Type *ret = sem_check_function_return_type($1, yylineno);
+
+                                                                                                sem_declare_function($2, ret, yylineno);
+
+                                                                                                current_function_type  = ret;
+                                                                                                current_function_name  = $2;
+                                                                                                in_param_context       = 1;
+                                                                                                symtab_enter_scope();      /* ΤΩΡΑ μπαίνουμε στο scope 1 (params/locals) */
+                                                                                            }
                             ;
 
 parameter_types :           parameter_types T_COMMA typename pass_list_dims
@@ -556,7 +573,7 @@ parameter_types :           parameter_types T_COMMA typename pass_list_dims
 pass_list_dims :            T_REFER
                             | listspec dims
                             ;
-nopar_func_header :         func_header_start T_LPAREN T_RPAREN ; 
+nopar_func_header :         func_header_start T_LPAREN T_RPAREN                                         {in_param_context = 0;};
 
 union_declaration :         T_UNION T_ID union_body T_SEMI                                              {Type *t = make_simple_type(TYPE_UNION);
                                                                                                             if (!symtab_insert($2, SYM_TYPE, t)) {
@@ -566,7 +583,6 @@ union_declaration :         T_UNION T_ID union_body T_SEMI                      
                             ;
 
 global_var_declaration :    type_with_list init_variabledefs T_SEMI                                      {$$ = $2;}
-                            /* |typename { current_type = $1; } init_variabledefs error                   {YYERROR_FMT(" HINT: missing ';' \n"); yyerrok;} */
                             ;
 
 init_variabledefs :         init_variabledefs T_COMMA init_variabledef                                  {$$ = ast_list_append($1, $3,yylineno); }
@@ -577,23 +593,31 @@ init_variabledef :          variabledef initializer                             
 func_declaration :          short_func_declaration                                                      {$$.node = NULL;}
                             | full_func_declaration                                                     {$$.node = $1.node;}   ;                         
 full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRACE                      {
+                                                                                                            sem_define_function(current_function_name, current_function_type, yylineno);
+
                                                                                                             ASTNode *body = $3.node;
                                                                                                             $$.node = ast_make_func_decl(current_function_name, body, yylineno);
+
                                                                                                             symtab_leave_scope();
                                                                                                             current_function_type = NULL;
                                                                                                             current_function_name = NULL;
+                                                                                                            in_param_context = 0;
                                                                                                         }
-                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { symtab_leave_scope();   current_function_type = NULL; $$.node = $3.node;};
+                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { symtab_leave_scope();   in_param_context = 0; current_function_type = NULL; $$.node = $3.node;};
                             | nopar_func_header T_LBRACE  decl_statements T_RBRACE                      {
+                                                                                                            sem_define_function(current_function_name, current_function_type, yylineno);
+
                                                                                                             ASTNode *body = $3.node;
                                                                                                             $$.node = ast_make_func_decl(current_function_name, body, yylineno);
+
                                                                                                             symtab_leave_scope();
-                                                                                                            current_function_type = NULL;
-                                                                                                            current_function_name = NULL;
+                                                                                                            current_function_type  = NULL;
+                                                                                                            current_function_name  = NULL;
+                                                                                                            in_param_context       = 0;
                                                                                                         }
                             ;
-full_par_func_header :      class_func_header_start T_LPAREN parameter_list T_RPAREN
-                            | func_header_start T_LPAREN parameter_list T_RPAREN
+full_par_func_header :      class_func_header_start T_LPAREN parameter_list T_RPAREN                    {in_param_context = 0;}
+                            | func_header_start T_LPAREN parameter_list T_RPAREN                        {in_param_context = 0;}    
                             ;
 class_func_header_start :   type_with_list func_class T_ID                      {Type *ret = $1;
                                                                                     if (!symtab_insert($3, SYM_FUNC, ret)) {
@@ -609,16 +633,17 @@ func_class :                T_ID T_METH                                         
                                                                                     }
                                                                                 }
                             ;
-parameter_decl :            typename { current_type = $1; } pass_variabledef
+parameter_decl :            typename pass_variabledef                           {$$ = $1;}
                             ;
-parameter_list              : parameter_list T_COMMA parameter_decl
-                            | parameter_decl
+parameter_list              : parameter_list T_COMMA parameter_decl             {$$ = $1;}
+                            | parameter_decl                                    {$$ = $1;}
                             ;
+
+                            
 pass_variabledef :          variabledef
-                            | T_REFER T_ID                                      {if (!current_type) current_type = type_error;
-                                                                                    if (!symtab_insert($2, SYM_VAR, current_type)) {
-                                                                                        YYERROR_FMT("Redeclaration of parameter '%s'", $2);
-                                                                                    }
+                            | T_REFER T_ID                                      {
+                                                                                    if (!current_type) current_type = type_error;
+                                                                                    sem_declare_param($2, current_type, 1, yylineno);  /* is_ref = 1 */
                                                                                 }
                             ;
 nopar_class_func_header     : class_func_header_start T_LPAREN T_RPAREN ;

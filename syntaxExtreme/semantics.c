@@ -97,11 +97,6 @@ Type *sem_check_assignment(Type *left, Type *right, int line){
 
     //enums
     if (left->kind == TYPE_ENUM || right->kind == TYPE_ENUM) {
-            fprintf(stderr,
-            "DEBUG(enum ==): line %d, left=%p(%s), right=%p(%s)\n",
-            line,
-            (void*)left,  left && left->enum_name ? left->enum_name : "NULL",
-            (void*)right, right && right->enum_name ? right->enum_name : "NULL");
         if (left->kind != TYPE_ENUM || right->kind != TYPE_ENUM) {
             sem_fatal("assignment between enum and non-enum at line %d", line);
         }
@@ -243,11 +238,6 @@ Type *sem_binary_equality(Type *left, Type *right, int line){
 
     /* enums: πρέπει να είναι ίδιο enum type */
     if (left->kind == TYPE_ENUM || right->kind == TYPE_ENUM) {
-            fprintf(stderr,
-            "DEBUG(enum ==): line %d, left=%p(%s), right=%p(%s)\n",
-            line,
-            (void*)left,  left && left->enum_name ? left->enum_name : "NULL",
-            (void*)right, right && right->enum_name ? right->enum_name : "NULL");
         if (left->kind != TYPE_ENUM || right->kind != TYPE_ENUM) {
             sem_fatal("comparison between enum and non-enum (line %d)", line);
         }
@@ -445,6 +435,84 @@ Type *sem_check_return(Type *func_type, Type *ret_type, int line) {
 
     return func_type;
 }
+
+Symbol *sem_declare_function(const char *name, Type *ret_type, int line)
+{
+    if (!name || !ret_type || ret_type == type_error) {
+        sem_fatal("invalid function declaration (line %d)", line);
+    }
+
+    Symbol *s = symtab_lookup(name);
+
+    if (!s) {
+        /* πρώτη φορά βλέπουμε τη συνάρτηση → insert ως forward decl */
+        s = symtab_insert(name, SYM_FUNC, ret_type);
+        if (!s) {
+            sem_fatal("cannot insert function '%s' (line %d)", name, line);
+        }
+        s->u.func.is_forward_decl = 1;
+        /* param_count/params μπορείς να τα γεμίσεις αργότερα αν θέλεις */
+    } else {
+        /* υπήρχε ήδη: έλεγξε συμβατότητα */
+        if (s->kind != SYM_FUNC) {
+            sem_fatal("'%s' redeclared as function (line %d)", name, line);
+        }
+        if (s->type != ret_type) {
+            sem_fatal("conflicting declaration of function '%s' (line %d)", name, line);
+        }
+        /* αν είναι ήδη FUNC με ίδιο type, το θεωρούμε ΟΚ (άλλο prototype). */
+    }
+
+    return s;
+}
+
+Symbol *sem_define_function(const char *name, Type *ret_type, int line)
+{
+    if (!name || !ret_type || ret_type == type_error) {
+        sem_fatal("invalid function definition (line %d)", line);
+    }
+
+    Symbol *s = symtab_lookup(name);
+
+    if (!s) {
+        /* δεν υπήρχε καν prototype → insert τώρα ως πλήρη definition */
+        s = symtab_insert(name, SYM_FUNC, ret_type);
+        if (!s) {
+            sem_fatal("cannot insert function '%s' (line %d)", name, line);
+        }
+    } else {
+        if (s->kind != SYM_FUNC) {
+            sem_fatal("'%s' redeclared as function (line %d)", name, line);
+        }
+        if (s->type != ret_type) {
+            sem_fatal("conflicting definition of function '%s' (line %d)", name, line);
+        }
+    }
+
+    /* εδώ σηματοδοτούμε ότι πλέον είναι κανονική definition, όχι μόνο forward */
+    s->u.func.is_forward_decl = 0;
+
+    return s;
+}
+
+/* Δήλωση παραμέτρου (by value ή by reference) */
+Symbol *sem_declare_param(const char *name, Type *type, int is_ref, int line)
+{
+    if (!name || !type || type == type_error) {
+        sem_fatal("invalid parameter declaration (line %d)", line);
+    }
+
+    Symbol *s = symtab_insert(name, SYM_PARAM, type);
+    if (!s) {
+        sem_fatal("redeclaration of parameter '%s' (line %d)", name, line);
+    }
+
+    s->storage      = STOR_PARAM;
+    s->is_ref_param = is_ref ? 1 : 0;
+
+    return s;
+}
+
 
 //ENUMS
 void sem_define_enum_constant(Type *enum_type, const char *name, int value, int line) {

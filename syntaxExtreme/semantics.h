@@ -5,6 +5,7 @@
 #include "symbolTable.h"
 #include <stdbool.h>
 #include "ast.h"
+#include "symbol.h"
 
 void sem_fatal(const char *fmt, ...);
 
@@ -45,6 +46,11 @@ Type *sem_length(Type *exprr,int line);
 Type *sem_call_check(struct ASTNode *func_node, struct ASTNode *args, int line);
 Type *sem_check_function_return_type(Type *ret, int line);
 Type *sem_check_return(Type *func_type, Type *ret_type, int line);
+
+Symbol *sem_declare_function(const char *name, Type *ret_type, int line);
+Symbol *sem_define_function (const char *name, Type *ret_type, int line);
+Symbol *sem_declare_param   (const char *name, Type *type, int is_ref, int line);
+
 
 //Enums
 

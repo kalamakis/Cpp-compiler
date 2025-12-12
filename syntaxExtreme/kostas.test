@@ -1,50 +1,68 @@
 typedef int myint;
 
+/* global consts */
 const int    MAX_COUNT = 10;
 const float  PI        = 3.14;
-const char   CH        = 'A';
+const char   CH        = 'Z';
 const string MSG       = "hello";
 
-enum Color {
-    RED = 1,
-    GREEN,
-    BLUE = 10,
-    YELLOW
-};
+/* global vars */
+int   a;
+float b;
+myint g;
 
-int    a;
-float  b;
-Color  c;
+/* function prototypes (forward declarations) */
+int   sum(int, int);
+float mix(float, int, float &);
+int   nopar();
 
-int foo(int x) {
-    int y;
-    y = x + MAX_COUNT;
-    return y;
-}
+/* function definitions */
 
-int bar(Color col, int k) {
+int sum(int x, int y) {
     int r;
-    r = k;
-    if (col == GREEN) {
-        r = r + 1;
-    }
-    if (col == BLUE) {
-        r = r + 2;
-    }
+    r = x + y + MAX_COUNT;
     return r;
 }
 
+float mix(float f, int k, float & acc) {
+    int tmp;
+    tmp = k + MAX_COUNT;
+    acc = acc + f;
+    return acc + tmp;
+}
+
+int nopar() {
+    int t;
+    t = 1;
+    return t;
+}
+
 int main() {
+    int   local;
+    float acc;
+
+    acc = 0.0;
+
     a = 1;
     b = 2.0;
-    c = GREEN;
+    g = sum(a, 3);
+
+    /* call with reference parameter */
+    b = mix(b, g, acc);
+
+    local = nopar();
 
     if (a) {
-        b = b + foo(a);
+        b = b + sum(local, g);
     }
 
-    c = BLUE;
-    a = bar(c, a);
+    while (g) {
+        g = g - 1;
+    }
+
+    for (local = 0; local < 3; local = local + 1) {
+        a = a + local;
+    }
 
     return 0;
 }
