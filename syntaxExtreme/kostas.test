@@ -1,24 +1,50 @@
-int a;
-float b;
+typedef int myint;
 
-int foo(){
-    return 42;
+const int    MAX_COUNT = 10;
+const float  PI        = 3.14;
+const char   CH        = 'A';
+const string MSG       = "hello";
+
+enum Color {
+    RED = 1,
+    GREEN,
+    BLUE = 10,
+    YELLOW
+};
+
+int    a;
+float  b;
+Color  c;
+
+int foo(int x) {
+    int y;
+    y = x + MAX_COUNT;
+    return y;
 }
 
-void bar(){
-    a = a + 1;
+int bar(Color col, int k) {
+    int r;
+    r = k;
+    if (col == GREEN) {
+        r = r + 1;
+    }
+    if (col == BLUE) {
+        r = r + 2;
+    }
+    return r;
 }
 
-int main(){
-    a=1;
-    if (a)  {
-        b = 3.14+a;
+int main() {
+    a = 1;
+    b = 2.0;
+    c = GREEN;
+
+    if (a) {
+        b = b + foo(a);
     }
-    foo();
-    for(a=0;a<10;a=a+1){
-        b=b+1.0;
-    }
-    bar();
+
+    c = BLUE;
+    a = bar(c, a);
+
     return 0;
-    
 }

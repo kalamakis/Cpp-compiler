@@ -85,6 +85,8 @@ static void ast_print_dot_rec(ASTNode *n, FILE *out, int *id)
         case AST_LIST:     kind = "LIST";    break;
         case AST_RETURN:   kind = "RETURN";  break;
         case AST_INDEX:    kind = "INDEX";   break;
+        case AST_FUNC_DECL: kind = "FUNC";    break;
+        case AST_VAR_DECL:  kind = "VARDECL"; break;
         default:           kind = "NODE";    break;
     }
 
@@ -135,6 +137,12 @@ static void ast_print_dot_rec(ASTNode *n, FILE *out, int *id)
     case AST_INDEX:
         snprintf(extra, sizeof(extra), "\\n[array index]");
         break;
+    case AST_VAR_DECL: {
+        if (n->u.var_decl.name) {
+            snprintf(extra, sizeof(extra), "\\nVARDECL %s", n->u.var_decl.name);
+        }
+        break;
+    }
 
     default:
         break;
@@ -207,6 +215,7 @@ static void ast_print_dot_rec(ASTNode *n, FILE *out, int *id)
         case AST_FUNC_DECL:
             CHILD(n->u.func_decl.body);
             break;
+        
 
         default:
             break;

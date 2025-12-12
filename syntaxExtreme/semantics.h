@@ -31,6 +31,8 @@ Type *sem_unary_not(Type *t, int line);
 Type *sem_unary_incdec(Type *t, int line);
 Type *sem_unary_sign(Type *t, int line);
 
+Symbol *sem_define_const(Type *t, const char *name, ASTNode *init_expr, int line);
+
 //list
 Type *sem_make_list_type(Type *elem_type, int line);
 Type *sem_find_list_element_type(Type *acc, Type *elem, int line);

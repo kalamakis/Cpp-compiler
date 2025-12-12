@@ -54,8 +54,7 @@ Type *attach_nested_array(Type *left, Type *right) {
     return left;
 }
 
-/* Στο variabledef: θέλουμε να "γεμίσουμε" τα elem_type των dims με το base type.
-   dims μπορεί να είναι NULL. Επιστρέφει τον ολοκληρωμένο τύπο. */
+/* Στο variabledef: θέλουμε να gεμίσουμε τα elem_type των dims με το base type.*/
 Type *attach_array_to_base(Type *base, Type *dims) {
     if (!dims) return base;
     Type *t = dims;
@@ -68,7 +67,7 @@ Type *make_enum_type(const char *name){
     Type *t = make_simple_type(TYPE_ENUM);
     if (!t) return NULL;
     if (name) {
-        t->enum_name = strdup(name); /* θυμόμαστε το όνομα (ελαφριά υλοποίηση) */
+        t->enum_name = strdup(name);
     } else {
         t->enum_name = NULL;
     }
@@ -81,7 +80,7 @@ EnumBuilder *start_enum(const char *name)
     EnumBuilder *eb = malloc(sizeof(EnumBuilder));
     if (!eb) return NULL;
 
-    eb->enum_type = make_enum_type(name);  // ήδη υπάρχει στον τύπο σου
+    eb->enum_type = make_enum_type(name); 
     eb->next_value = 0;
 
     return eb;

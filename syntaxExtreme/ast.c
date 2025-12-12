@@ -143,6 +143,15 @@ ASTNode *ast_make_var(char *name, Type *t, int line)
     return n;
 }
 
+ASTNode *ast_make_var_decl(char *name, Type *t, ASTNode *init, int line)
+{
+    ASTNode *n = ast_new(AST_VAR_DECL, t, line);
+    n->u.var_decl.name      = name;
+    n->u.var_decl.decl_type = t;
+    n->u.var_decl.init      = init;   // μπορεί να είναι NULL
+    return n;
+}
+
 /* ====================  STATEMENTS  ==================== */
 
 /* assignment: lhs = rhs; 

@@ -43,6 +43,7 @@
     char    *strval;
     char     charval;
     Type    *type;
+    ASTNode *node;
     ExprInfo expr;    // for expressions
     StmtInfo stmt;    // for statements/blocks
 }
@@ -121,9 +122,21 @@
 %type <type> typename standard_type list_elements type_with_list dims dim 
 %type <intval> listspec initializer
 
-%type <expr> expression general_expression assignment variable constant listexpression expression_list optexpr
-%type <stmt> statement if_statement if_tail while_statement for_statement return_statement comp_statement io_statement expression_statement 
-%type <stmt> statements decl_statements main_function program global_declarations global_declaration func_declaration full_func_declaration 
+%type <expr> expression general_expression assignment variable constant listexpression expression_list optexpr init_value
+
+%type <stmt> 
+    statement if_statement if_tail while_statement for_statement 
+    return_statement comp_statement io_statement expression_statement 
+    statements decl_statements main_function program 
+    func_declaration full_func_declaration
+
+%type <node> 
+    global_declarations global_declaration 
+    var_declaration variabledefs variabledef 
+    init_variabledefs init_variabledef
+    global_var_declaration
+    parameter_decl parameter_list
+
  
 
 %left T_COMMA
@@ -146,21 +159,21 @@
 
 program :                   global_declarations main_function                   {
                                                                                     extern ASTNode *ast_root;
-                                                                                    ast_root = ast_make_program($1.node, $2.node, yylineno);
+                                                                                    ast_root = ast_make_program($1, $2.node, yylineno);
                                                                                 }             
                             ;
-global_declarations :       global_declarations global_declaration              {   if ($1.node) $$.node = ast_list_append($1.node, $2.node,yylineno);
-                                                                                    else $$.node = $2.node;
+global_declarations :       global_declarations global_declaration              {   if ($1) $$ = ast_list_append($1, $2,yylineno);
+                                                                                    else $$ = $2;
                                                                                 }
-                            | %empty                                            {$$.node = NULL;}
+                            | %empty                                            {$$ = NULL;}
                             ;
-global_declaration :        typedef_declaration                                 {$$.node = NULL;}
-                            | const_declaration                                 {$$.node = NULL;}
-                            | enum_declaration                                  {$$.node = NULL;}
-                            | class_declaration                                 {$$.node = NULL;}
-                            | union_declaration                                 {$$.node = NULL;}
-                            | global_var_declaration                            {$$.node = NULL;}
-                            | func_declaration                                  {$$.node = $1.node;}
+global_declaration :        typedef_declaration                                 {$$ = NULL;}
+                            | const_declaration                                 {$$ = NULL;}
+                            | enum_declaration                                  {$$ = NULL;}
+                            | class_declaration                                 {$$ = NULL;}
+                            | union_declaration                                 {$$ = NULL;}
+                            | global_var_declaration                            {$$ = $1; }
+                            | func_declaration                                  {$$ = $1.node;}
                             /* | error T_SEMI                                      {yyerror(" HINT: syntax error in global declaration\n"); yyerrok;} */
                             /* | error T_RBRACE                                    {yyerror(" HINT: in global declaration\n"); yyerrok; } */
                             ;
@@ -212,14 +225,13 @@ const_declaration :         T_CONST typename { current_type = $2; } constdefs T_
 constdefs :                 constdefs T_COMMA constdef
                             | constdef
                             ;
-constdef :                  T_ID dims T_ASSIGN init_value                       {if (!current_type) current_type = type_error;
-                                                                                    if (!symtab_insert($1, SYM_CONST, current_type)) {
-                                                                                        YYERROR_FMT("Redeclaration of const '%s'", $1);
-                                                                                    }
+constdef :                  T_ID dims T_ASSIGN init_value                       {   if (!current_type) current_type = type_error;
+                                                                                    if ($2 != NULL) {YYERROR_FMT("const arrays not supported (line %d)", yylineno);} //TODO array consts
+                                                                                    sem_define_const(current_type, $1, $4.node, yylineno);
                                                                                 }
                             ;
-init_value :                expression
-                            | T_LBRACE init_values T_RBRACE          
+init_value :                expression                                          {$$ = $1;}
+                            | T_LBRACE init_values T_RBRACE                     {$$.type = type_error; $$.node = NULL;} // TODO array init value
                             ;
 expression
                             : expression T_OROP expression
@@ -491,20 +503,20 @@ member :                    var_declaration
                             | anonymous_union
                             ;
 
-var_declaration :           type_with_list variabledefs T_SEMI
+var_declaration :           type_with_list variabledefs T_SEMI                  { $$ = $2; }
                             ;
 
-variabledefs :              variabledefs T_COMMA variabledef
-                            | variabledef
+variabledefs :              variabledefs T_COMMA variabledef                    { $$ = ast_make_list($1, $3, yylineno); }
+                            | variabledef                                       { $$ = $1; }
                             ;
 
 variabledef :               T_ID dims                                           {if (!current_type) current_type = type_error;
                                                                                     Type *t = current_type;
-                                                                                    if ($2 != NULL)         // piankas
-                                                                                        t = attach_array_to_base(current_type, $2);
+                                                                                    if ($2 != NULL) t = attach_array_to_base(current_type, $2);
                                                                                     if (!symtab_insert($1, SYM_VAR, t)) {
                                                                                         YYERROR_FMT("Redeclaration of '%s'", $1);
                                                                                     }
+                                                                                    $$ = ast_make_var_decl($1, t, NULL, yylineno);
                                                                                 }
                             ;
 
@@ -546,21 +558,21 @@ pass_list_dims :            T_REFER
                             ;
 nopar_func_header :         func_header_start T_LPAREN T_RPAREN ; 
 
-union_declaration :         T_UNION T_ID union_body T_SEMI                      {Type *t = make_simple_type(TYPE_UNION);
-                                                                                    if (!symtab_insert($2, SYM_TYPE, t)) {
-                                                                                        YYERROR_FMT("Redeclaration of union '%s'", $2);
-                                                                                    }
-                                                                                }
+union_declaration :         T_UNION T_ID union_body T_SEMI                                              {Type *t = make_simple_type(TYPE_UNION);
+                                                                                                            if (!symtab_insert($2, SYM_TYPE, t)) {
+                                                                                                                YYERROR_FMT("Redeclaration of union '%s'", $2);
+                                                                                                            }
+                                                                                                        }
                             ;
 
-global_var_declaration :    type_with_list init_variabledefs T_SEMI
+global_var_declaration :    type_with_list init_variabledefs T_SEMI                                      {$$ = $2;}
                             /* |typename { current_type = $1; } init_variabledefs error                   {YYERROR_FMT(" HINT: missing ';' \n"); yyerrok;} */
                             ;
 
-init_variabledefs :         init_variabledefs T_COMMA init_variabledef;
-                            | init_variabledef
+init_variabledefs :         init_variabledefs T_COMMA init_variabledef                                  {$$ = ast_list_append($1, $3,yylineno); }
+                            | init_variabledef                                                          {$$ = $1;}
                             ;
-init_variabledef :          variabledef initializer;
+init_variabledef :          variabledef initializer                                                     { $$ = $1; };
 
 func_declaration :          short_func_declaration                                                      {$$.node = NULL;}
                             | full_func_declaration                                                     {$$.node = $1.node;}   ;                         
@@ -597,8 +609,10 @@ func_class :                T_ID T_METH                                         
                                                                                     }
                                                                                 }
                             ;
-parameter_list :            parameter_list T_COMMA typename pass_variabledef
-                            | typename pass_variabledef { current_type = $1; }
+parameter_decl :            typename { current_type = $1; } pass_variabledef
+                            ;
+parameter_list              : parameter_list T_COMMA parameter_decl
+                            | parameter_decl
                             ;
 pass_variabledef :          variabledef
                             | T_REFER T_ID                                      {if (!current_type) current_type = type_error;
@@ -691,7 +705,14 @@ main_function :             main_header T_LBRACE decl_statements T_RBRACE   { sy
                                                                                 ASTNode *body = $3.node;
                                                                                 $$.node = ast_make_func_decl("main", body, yylineno);
                                                                             };
-main_header :               T_INT T_MAIN  T_LPAREN T_RPAREN                 { current_function_type = type_int; current_function_name = "main"; symtab_enter_scope();}   
+main_header :               T_INT T_MAIN  T_LPAREN T_RPAREN                 {
+                                                                                current_function_type = type_int;
+                                                                                current_function_name = "main";
+                                                                                if (!symtab_insert("main", SYM_FUNC, type_int)) {
+                                                                                    YYERROR_FMT("Redeclaration of function 'main'");
+                                                                                }
+                                                                                symtab_enter_scope();
+                                                                            }  
                             | error T_MAIN  T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
                             | T_INT error   T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
                             | T_INT T_MAIN  error       T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}

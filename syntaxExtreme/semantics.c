@@ -97,15 +97,19 @@ Type *sem_check_assignment(Type *left, Type *right, int line){
 
     //enums
     if (left->kind == TYPE_ENUM || right->kind == TYPE_ENUM) {
-        /* Πρέπει και οι δύο να είναι enums */
+            fprintf(stderr,
+            "DEBUG(enum ==): line %d, left=%p(%s), right=%p(%s)\n",
+            line,
+            (void*)left,  left && left->enum_name ? left->enum_name : "NULL",
+            (void*)right, right && right->enum_name ? right->enum_name : "NULL");
         if (left->kind != TYPE_ENUM || right->kind != TYPE_ENUM) {
             sem_fatal("assignment between enum and non-enum at line %d", line);
         }
-        //Δύο enums είναι συμβατά ΜΟΝΟ αν ταυτίζονται.
-        if (left != right) {
+        const char *ln = left->enum_name;
+        const char *rn = right->enum_name;
+        if (!ln || !rn || strcmp(ln, rn) != 0) {
             sem_fatal("assignment between different enum types at line %d", line);
         }
-
         return left;
     }
 
@@ -239,7 +243,17 @@ Type *sem_binary_equality(Type *left, Type *right, int line){
 
     /* enums: πρέπει να είναι ίδιο enum type */
     if (left->kind == TYPE_ENUM || right->kind == TYPE_ENUM) {
-        if (left->kind != TYPE_ENUM || right->kind != TYPE_ENUM || left != right) {
+            fprintf(stderr,
+            "DEBUG(enum ==): line %d, left=%p(%s), right=%p(%s)\n",
+            line,
+            (void*)left,  left && left->enum_name ? left->enum_name : "NULL",
+            (void*)right, right && right->enum_name ? right->enum_name : "NULL");
+        if (left->kind != TYPE_ENUM || right->kind != TYPE_ENUM) {
+            sem_fatal("comparison between enum and non-enum (line %d)", line);
+        }
+        const char *ln = left->enum_name;
+        const char *rn = right->enum_name;
+        if (!ln || !rn || strcmp(ln, rn) != 0) {
             sem_fatal("incompatible enum types (line %d)", line);
         }
         return type_int;
@@ -265,6 +279,49 @@ Type *sem_binary_equality(Type *left, Type *right, int line){
     sem_fatal("incompatible types at line %d", line);
     return type_error;
 }
+
+Symbol *sem_define_const(Type *t, const char *name, ASTNode *init_expr, int line)
+{
+    if (!t || t == type_error) {
+        sem_fatal("invalid type for const '%s' (line %d)", name, line);
+    }
+
+    if (!init_expr || !init_expr->type || init_expr->type == type_error) {
+        sem_fatal("invalid initializer for const '%s' (line %d)", name, line);
+    }
+
+    /* έλεγχος συμβατότητας τύπων: const T x = expr; */
+    sem_check_assignment(t, init_expr->type, line);
+
+    Symbol *s = symtab_insert(name, SYM_CONST, t);
+    if (!s) {
+        sem_fatal("Redeclaration of const '%s' (line %d)", name, line);
+    }
+
+    /* Προαιρετικά: αν είναι literal, αποθήκευσε την τιμή στο symbol */
+    if (init_expr->kind == AST_CONST) {
+        switch (t->kind) {
+        case TYPE_INT:
+            s->u.c.ival = init_expr->u.constant.ival;
+            break;
+        case TYPE_FLOAT:
+            s->u.c.fval = init_expr->u.constant.fval;
+            break;
+        case TYPE_CHAR:
+            s->u.c.cval = init_expr->u.constant.cval;
+            break;
+        case TYPE_STRING:
+            s->u.c.sval = init_expr->u.constant.sval;
+            break;
+        default:
+            /* για άλλους τύπους μην κάνεις κάτι ειδικό τώρα */
+            break;
+        }
+    }
+
+    return s;
+}
+
 
 //LISTS
 
@@ -394,11 +451,14 @@ void sem_define_enum_constant(Type *enum_type, const char *name, int value, int 
     if (!enum_type || enum_type->kind != TYPE_ENUM) {
         sem_fatal("internal: sem_define_enum_constant called with non-enum (line %d)", line);
     }
-    if (!symtab_insert(name, SYM_ENUM_CONST, enum_type)) {
+
+    Symbol *s = symtab_insert(name, SYM_ENUM_CONST, enum_type);
+    if (!s) {
         sem_fatal("Redeclaration of enum const '%s' (line %d)", name, line);
     }
-    /* Todo όταν μπορούμε να ελέγχει τις τιμές μέσα στο enum. Προσθήκη value σε symbol στο ASTS*/
+    s->u.enum_const.value = value;
 }
+
 
 Type *sem_use_enum_constant(Type *enum_type, const char *const_name, int line) {
     if (!enum_type || enum_type->kind != TYPE_ENUM) {
