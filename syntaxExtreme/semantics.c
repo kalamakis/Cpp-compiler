@@ -8,6 +8,10 @@
 
 #include "semantics.h"
 
+static Symbol *current_function_symbol = NULL;
+static int collecting_signature = 0;  // 1 = χτίζουμε, 0 = ελέγχουμε
+static int current_param_index = 0;
+
 void sem_fatal(const char *fmt, ...){
     va_list ap;
     fprintf(stderr, "Semantic error: ");
@@ -368,7 +372,6 @@ Type *sem_find_list_element_type(Type *acc, Type *elem, int line){
 
 //FUNCTIONS
 
-
 Type *sem_call_check(ASTNode *func_node, ASTNode *args, int line)
 {
     if (!func_node || func_node->kind != AST_VAR) {
@@ -377,22 +380,70 @@ Type *sem_call_check(ASTNode *func_node, ASTNode *args, int line)
 
     Symbol *s = func_node->u.var.sym;
     if (!s) {
-        sem_fatal("internal error: call without symbol at line %d", line);
+        sem_fatal("internal: call without symbol at line %d", line);
     }
-
     if (s->kind != SYM_FUNC) {
-        sem_fatal("'%s' is not a function at line %d", s->name, line);
+        sem_fatal("'%s' is not a function (line %d)", s->name, line);
     }
 
-    /* Προς το παρόν ΔΕΝ κάνουμε έλεγχο παραμέτρων (arity/types).
-       εδώ θα γίνει το matching args <-> param types. */
+    int argc = count_args(args);
+    int paramc = s->u.func.param_count;
+
+    if (argc != paramc) {
+        sem_fatal("function '%s' expects %d arguments but %d given (line %d)",s->name, paramc, argc, line);
+    }
+
+    int idx = 0;
+    check_args_rec(args, s, &idx, line);
 
     if (!s->type) {
-        sem_fatal("function '%s' has no return type at line %d", s->name, line);
+        sem_fatal("function '%s' has no return type (line %d)", s->name, line);
     }
 
-    return s->type;  // return type του function
+    return s->type;
 }
+
+static int count_args(ASTNode *args)
+{
+    if (!args) return 0;
+    if (args->kind == AST_LIST) {
+        return count_args(args->u.list.head) + count_args(args->u.list.tail);
+    }
+    return 1;
+}
+
+static void check_args_rec(ASTNode *args, Symbol *func, int *index, int line)
+{
+    if (!args) return;
+
+    if (args->kind == AST_LIST) {
+        check_args_rec(args->u.list.head, func, index, line);
+        check_args_rec(args->u.list.tail, func, index, line);
+        return;
+    }
+
+    int i = *index;
+    if (i >= func->u.func.param_count) {
+        sem_fatal("too many arguments in call to '%s' (line %d)",func->name, line);
+    }
+
+    Symbol *p = func->u.func.params[i];
+    Type   *expected = p->type;
+    Type   *actual   = args->type;   // τα expression nodes σου έχουν type
+
+    if (p->is_ref_param) {
+        // ref param => πρέπει να είναι lvalue: VAR ή INDEX
+        if (args->kind != AST_VAR && args->kind != AST_INDEX) {
+            sem_fatal("argument %d of '%s' must be an lvalue (line %d)",i+1, func->name, line);
+        }
+        sem_check_assignment(expected, actual, line);
+    } else {
+        sem_check_assignment(expected, actual, line);
+    }
+
+    (*index)++;
+}
+
 
 Type *sem_check_function_return_type(Type *ret, int line) {
     if (!ret || ret == type_error) {
@@ -436,82 +487,171 @@ Type *sem_check_return(Type *func_type, Type *ret_type, int line) {
     return func_type;
 }
 
-Symbol *sem_declare_function(const char *name, Type *ret_type, int line)
+Symbol *sem_declare_function(const char *name, Type *ret, int line)
 {
-    if (!name || !ret_type || ret_type == type_error) {
-        sem_fatal("invalid function declaration (line %d)", line);
-    }
-
-    Symbol *s = symtab_lookup(name);
-
-    if (!s) {
-        /* πρώτη φορά βλέπουμε τη συνάρτηση → insert ως forward decl */
-        s = symtab_insert(name, SYM_FUNC, ret_type);
-        if (!s) {
+    Symbol *f = symtab_lookup(name);
+    if (!f) {
+        // πρώτη φορά βλέπουμε αυτή τη συνάρτηση
+        f = symtab_insert(name, SYM_FUNC, ret);
+        if (!f) {
             sem_fatal("cannot insert function '%s' (line %d)", name, line);
         }
-        s->u.func.is_forward_decl = 1;
-        /* param_count/params μπορείς να τα γεμίσεις αργότερα αν θέλεις */
+        f->u.func.param_count    = 0;
+        f->u.func.params         = NULL;
+        f->u.func.is_forward_decl = 1;  // μέχρι να οριστεί το σώμα
     } else {
-        /* υπήρχε ήδη: έλεγξε συμβατότητα */
-        if (s->kind != SYM_FUNC) {
-            sem_fatal("'%s' redeclared as function (line %d)", name, line);
+        if (f->kind != SYM_FUNC) {
+            sem_fatal("'%s' redeclared as non-function (line %d)", name, line);
         }
-        if (s->type != ret_type) {
-            sem_fatal("conflicting declaration of function '%s' (line %d)", name, line);
+        if (f->type != ret) {
+            sem_fatal("conflicting return type for function '%s' (line %d)", name, line);
         }
-        /* αν είναι ήδη FUNC με ίδιο type, το θεωρούμε ΟΚ (άλλο prototype). */
+        // δεν πειράζουμε τα params εδώ: κρατάμε το παλιό signature
     }
 
-    return s;
+    current_function_symbol = f;
+    current_param_index     = 0;
+    // Αν δεν έχει signature (param_count == 0) → τώρα το χτίζουμε
+    collecting_signature    = (f->u.func.param_count == 0);
+
+    return f;
 }
 
-Symbol *sem_define_function(const char *name, Type *ret_type, int line)
+Symbol *sem_define_function(const char *name, Type *ret, int line)
 {
-    if (!name || !ret_type || ret_type == type_error) {
-        sem_fatal("invalid function definition (line %d)", line);
+    Symbol *f = symtab_lookup(name);
+    if (!f || f->kind != SYM_FUNC) {
+        sem_fatal("internal: defining unknown function '%s' (line %d)", name, line);
     }
 
-    Symbol *s = symtab_lookup(name);
+    if (f->type != ret) {
+        sem_fatal("conflicting definition of function '%s' (line %d)", name, line);
+    }
 
-    if (!s) {
-        /* δεν υπήρχε καν prototype → insert τώρα ως πλήρη definition */
-        s = symtab_insert(name, SYM_FUNC, ret_type);
-        if (!s) {
+    if (!f->u.func.is_forward_decl) {
+        sem_fatal("redefinition of function '%s' (line %d)", name, line);
+    }
+
+    f->u.func.is_forward_decl = 0;
+    current_function_symbol = NULL;
+
+    return f;
+}
+
+Symbol *sem_begin_function(const char *name, Type *ret, int line){
+    Symbol *f = symtab_lookup(name);   // εδώ είμαστε ακόμα στο global scope
+
+    if (!f) {
+        f = symtab_insert(name, SYM_FUNC, ret);
+        if (!f) {
             sem_fatal("cannot insert function '%s' (line %d)", name, line);
         }
+        f->u.func.param_count   = 0;
+        f->u.func.params        = NULL;
+        f->u.func.is_forward_decl = 1;   // by default: prototype μέχρι να δούμε σώμα
     } else {
-        if (s->kind != SYM_FUNC) {
-            sem_fatal("'%s' redeclared as function (line %d)", name, line);
+        if (f->kind != SYM_FUNC) {
+            sem_fatal("'%s' is not a function (line %d)", name, line);
         }
-        if (s->type != ret_type) {
-            sem_fatal("conflicting definition of function '%s' (line %d)", name, line);
+        if (f->type != ret) {
+            sem_fatal("conflicting return type for function '%s' (line %d)", name, line);
         }
+        // εδώ μπορείς αργότερα να ελέγχεις αν η λίστα παραμέτρων ταιριάζει με προηγούμενο prototype
     }
 
-    /* εδώ σηματοδοτούμε ότι πλέον είναι κανονική definition, όχι μόνο forward */
-    s->u.func.is_forward_decl = 0;
+    // reset param list για το τρέχον header (απλό approach: κρατάμε την τελευταία)
+    f->u.func.param_count = 0;
+    free(f->u.func.params);
+    f->u.func.params = NULL;
 
-    return s;
+    return f;
 }
 
-/* Δήλωση παραμέτρου (by value ή by reference) */
+void sem_add_param_to_func(Symbol *func, Symbol *param)
+{
+    if (!func || func->kind != SYM_FUNC) return;
+
+    int n = func->u.func.param_count;
+    Symbol **new_params = realloc(func->u.func.params,(n + 1) * sizeof(Symbol*));
+    if (!new_params) {
+        sem_fatal("out of memory while adding parameter to function '%s'",func->name);
+    }
+
+    func->u.func.params = new_params;
+    func->u.func.params[n] = param;
+    func->u.func.param_count = n + 1;
+}
+
 Symbol *sem_declare_param(const char *name, Type *type, int is_ref, int line)
 {
-    if (!name || !type || type == type_error) {
-        sem_fatal("invalid parameter declaration (line %d)", line);
+    if (!current_function_symbol) {
+        sem_fatal("internal: parameter '%s' without current function (line %d)", name, line);
     }
 
-    Symbol *s = symtab_insert(name, SYM_PARAM, type);
-    if (!s) {
-        sem_fatal("redeclaration of parameter '%s' (line %d)", name, line);
+    // Πάντα βάζουμε το σύμβολο της παραμέτρου στο τωρινό scope
+    Symbol *p = symtab_insert(name, SYM_PARAM, type);
+    if (!p) {
+        sem_fatal("redefinition of parameter '%s' (line %d)", name, line);
+    }
+    p->storage      = STOR_PARAM;
+    p->is_ref_param = is_ref ? 1 : 0;
+
+    Symbol *f = current_function_symbol;
+
+    if (collecting_signature) {
+        // Πρώτη δήλωση/ορισμός ⇒ χτίζουμε signature
+        sem_add_param_to_func(f, p);
+    } else {
+        // Δεύτερη/επόμενη ⇒ κάνει έλεγχο με το ήδη αποθηκευμένο
+        if (current_param_index >= f->u.func.param_count) {
+            sem_fatal("too many parameters in definition of '%s' (line %d)", f->name, line);
+        }
+        Symbol *orig = f->u.func.params[current_param_index];
+        if (orig->type != type || orig->is_ref_param != p->is_ref_param) {
+            sem_fatal("parameter %d of function '%s' does not match previous declaration (line %d)",
+                      current_param_index + 1, f->name, line);
+        }
     }
 
-    s->storage      = STOR_PARAM;
-    s->is_ref_param = is_ref ? 1 : 0;
-
-    return s;
+    current_param_index++;
+    return p;
 }
+
+void sem_register_param_type(Type *type, int is_ref, int line){
+    if (!current_function_symbol) {
+        sem_fatal("internal: param type without current function (line %d)", line);
+    }
+
+    Symbol *f = current_function_symbol;
+
+    if (collecting_signature) {
+        // Χτίζουμε signature μόνο από τύπους (χωρίς ονόματα)
+        Symbol *fake = malloc(sizeof(Symbol));
+        if (!fake) {
+            sem_fatal("out of memory while adding prototype parameter (line %d)", line);
+        }
+        memset(fake, 0, sizeof(Symbol));
+        fake->name         = NULL;
+        fake->kind         = SYM_PARAM;
+        fake->type         = type;
+        fake->is_ref_param = is_ref ? 1 : 0;
+        sem_add_param_to_func(f, fake);
+    } else {
+        // Ελέγχουμε prototype/επανάληψη δήλωσης
+        if (current_param_index >= f->u.func.param_count) {
+            sem_fatal("too many parameters in declaration of '%s' (line %d)", f->name, line);
+        }
+        Symbol *orig = f->u.func.params[current_param_index];
+        if (orig->type != type || orig->is_ref_param != (is_ref ? 1 : 0)) {
+            sem_fatal("parameter %d of function '%s' does not match previous declaration (line %d)", current_param_index + 1, f->name, line);
+        }
+    }
+
+    current_param_index++;
+}
+
+
+
 
 
 //ENUMS

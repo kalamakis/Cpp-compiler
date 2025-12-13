@@ -230,3 +230,6 @@ ASTNode *ast_make_index(ASTNode *array, ASTNode *index, Type *t, int line)
     return n;
 }
 
+
+
+

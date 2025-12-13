@@ -43,13 +43,21 @@ Type *sem_index(Type *arrayType, Type *indexType, int lineno);
 Type *sem_length(Type *exprr,int line);
 
 //FUNCTIONS
-Type *sem_call_check(struct ASTNode *func_node, struct ASTNode *args, int line);
+
+Symbol *sem_begin_function(const char *name, Type *ret, int line);
+void sem_add_param(Symbol *func, Symbol *param);
+Type *sem_call_check(ASTNode *func_node, ASTNode *args, int line);
 Type *sem_check_function_return_type(Type *ret, int line);
 Type *sem_check_return(Type *func_type, Type *ret_type, int line);
 
 Symbol *sem_declare_function(const char *name, Type *ret_type, int line);
 Symbol *sem_define_function (const char *name, Type *ret_type, int line);
 Symbol *sem_declare_param   (const char *name, Type *type, int is_ref, int line);
+
+static int count_args(ASTNode *args);
+static void check_args_rec(ASTNode *args, Symbol *func, int *index, int line);
+
+void sem_register_param_type(Type *type, int is_ref, int line);
 
 
 //Enums

@@ -121,7 +121,7 @@
 // %type <strval> decl_statements declarations decltype statements statement expression_statement if_statement if_tail while_statement for_statement optexpr
 // %type <strval> return_statement io_statement in_list in_item out_list out_item comp_statement main_function main_header
 %type <type> typename standard_type list_elements type_with_list dims dim parameter_decl parameter_list
-%type <intval> listspec initializer
+%type <intval> listspec initializer pass_list_dims
 
 %type <expr> expression general_expression assignment variable constant listexpression expression_list optexpr init_value
 
@@ -393,8 +393,18 @@ variable
                                                                                 }
                             ;
 general_expression
-                            : general_expression T_COMMA general_expression     { $$ = $3; }
-                            | assignment                                        { $$ = $1; }
+                            : general_expression T_COMMA general_expression     { 
+                                                                                    $$ = $3; 
+                                                                                    // AST: χτίζουμε λίστα εκφράσεων (AST_LIST)
+                                                                                    if ($1.node) {
+                                                                                        $$.node = ast_list_append($1.node, $3.node, yylineno);
+                                                                                    } else {
+                                                                                        $$.node = $3.node;
+                                                                                    }
+                                                                                }
+                            | assignment                                        {   $$.type = $1.type;
+                                                                                    $$.node = $1.node;
+                                                                                }
                             ;
 assignment :                variable T_ASSIGN assignment                        {
                                                                                     Type *t = sem_check_assignment($1.type, $3.type, yylineno);
@@ -517,14 +527,12 @@ variabledef :               T_ID dims                                           
                                                                                         sem_declare_param($1, t, 0, yylineno);   /* is_ref = 0 param by value*/
                                                                                     } else {
                                                                                         Symbol *s = symtab_insert($1, SYM_VAR, t);
-                                                                                        if (!s) {
-                                                                                            YYERROR_FMT("Redeclaration of '%s'", $1);
-                                                                                        }
+                                                                                        if (!s) YYERROR_FMT("Redeclaration of '%s'", $1);
                                                                                     }
                                                                                     $$ = ast_make_var_decl($1, t, NULL, yylineno);
                                                                                 }
                             ;
-
+ 
 anonymous_union :           T_UNION union_body T_SEMI;
 
 union_body :                {symtab_enter_scope();} T_LBRACE fields T_RBRACE                 { symtab_leave_scope();};
@@ -567,11 +575,17 @@ func_header_start :         type_with_list T_ID                                 
                                                                                             }
                             ;
 
-parameter_types :           parameter_types T_COMMA typename pass_list_dims
-                            | typename pass_list_dims
+parameter_types :           parameter_types T_COMMA typename pass_list_dims                 {
+                                                                                                int is_ref = $4;          /* 1 αν &, 0 αλλιώς */
+                                                                                                sem_register_param_type(current_type, is_ref, yylineno);
+                                                                                            }
+                            | typename pass_list_dims                                       {
+                                                                                                int is_ref = $2;
+                                                                                                sem_register_param_type(current_type, is_ref, yylineno);
+                                                                                            }
                             ;
-pass_list_dims :            T_REFER
-                            | listspec dims
+pass_list_dims :            T_REFER                                                                     { $$ = 1; } 
+                            | listspec dims                                                             { $$ = 0; }
                             ;
 nopar_func_header :         func_header_start T_LPAREN T_RPAREN                                         {in_param_context = 0;};
 
