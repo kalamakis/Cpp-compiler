@@ -627,41 +627,6 @@ Symbol *sem_declare_param(const char *name, Type *type, int is_ref, int line)
     return s;
 }
 
-
-void sem_register_param_type(Type *type, int is_ref, int line){
-    if (!current_function_symbol) {
-        sem_fatal("internal: param type without current function (line %d)", line);
-    }
-
-    Symbol *f = current_function_symbol;
-
-    if (collecting_signature) {
-        // Χτίζουμε signature μόνο από τύπους (χωρίς ονόματα)
-        Symbol *fake = malloc(sizeof(Symbol));
-        if (!fake) {
-            sem_fatal("out of memory while adding prototype parameter (line %d)", line);
-        }
-        memset(fake, 0, sizeof(Symbol));
-        fake->name         = NULL;
-        fake->kind         = SYM_PARAM;
-        fake->type         = type;
-        fake->is_ref_param = is_ref ? 1 : 0;
-        sem_add_param_to_func(f, fake);
-    } else {
-        // Ελέγχουμε prototype/επανάληψη δήλωσης
-        if (current_param_index >= f->u.func.param_count) {
-            sem_fatal("too many parameters in declaration of '%s' (line %d)", f->name, line);
-        }
-        Symbol *orig = f->u.func.params[current_param_index];
-        if (orig->type != type || orig->is_ref_param != (is_ref ? 1 : 0)) {
-            sem_fatal("parameter %d of function '%s' does not match previous declaration (line %d)", current_param_index + 1, f->name, line);
-        }
-    }
-
-    current_param_index++;
-}
-
-
 void sem_param_list_reset(void)
 {
     current_param_count = 0;

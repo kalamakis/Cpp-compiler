@@ -62,8 +62,6 @@ Symbol *sem_declare_param   (const char *name, Type *type, int is_ref, int line)
 static int count_args(ASTNode *args);
 static void check_args_rec(ASTNode *args, Symbol *func, int *index, int line);
 
-void sem_register_param_type(Type *type, int is_ref, int line);
-
 void   sem_param_list_reset(void);
 void   sem_param_list_add(Type *t, int is_ref);
 
