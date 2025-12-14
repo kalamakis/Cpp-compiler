@@ -5,6 +5,7 @@ int foo(int, float, int, int &);
 int foo(int x, float y, int z, int & k) {
     int local;
     local = x + k;
+    k=5;
     return local;
 }
 

@@ -1,6 +1,6 @@
 digraph AST {
   node [shape=box];
-  n0 [label="PROGRAM\n(line 13)"];
+  n0 [label="PROGRAM\n(line 14)"];
   n1 [label="LIST\n(line 2)"];
   n2 [label="VARDECL\nVARDECL a\n(line 1)"];
   n1 -> n2;
@@ -8,8 +8,8 @@ digraph AST {
   n4 [label="VARDECL\nVARDECL b\n(line 2)"];
   n3 -> n4;
   n5 [label="LIST\n(line 4)"];
-  n6 [label="LIST\n(line 9)"];
-  n7 [label="FUNC\nfoo\n(line 9)"];
+  n6 [label="LIST\n(line 10)"];
+  n7 [label="FUNC\nfoo\n(line 10)"];
   n8 [label="LIST\n(line 8)"];
   n9 [label="ASSIGN\n(line 7)"];
   n10 [label="VAR\nlocal\n(line 7)"];
@@ -22,10 +22,18 @@ digraph AST {
   n9 -> n11;
   n8 -> n9;
   n14 [label="LIST\n(line 8)"];
-  n15 [label="RETURN\n(line 8)"];
-  n16 [label="VAR\nlocal\n(line 8)"];
+  n15 [label="ASSIGN\n(line 8)"];
+  n16 [label="VAR\nk\n(line 8)"];
   n15 -> n16;
+  n17 [label="CONST\n5\n(line 8)"];
+  n15 -> n17;
   n14 -> n15;
+  n18 [label="LIST\n(line 9)"];
+  n19 [label="RETURN\n(line 9)"];
+  n20 [label="VAR\nlocal\n(line 9)"];
+  n19 -> n20;
+  n18 -> n19;
+  n14 -> n18;
   n8 -> n14;
   n7 -> n8;
   n6 -> n7;
@@ -33,12 +41,12 @@ digraph AST {
   n3 -> n5;
   n1 -> n3;
   n0 -> n1;
-  n17 [label="FUNC\nmain\n(line 13)"];
-  n18 [label="ASSIGN\n(line 12)"];
-  n19 [label="VAR\na\n(line 12)"];
-  n18 -> n19;
-  n20 [label="CALL\nfoo()\n(line 12)"];
-  n18 -> n20;
-  n17 -> n18;
-  n0 -> n17;
+  n21 [label="FUNC\nmain\n(line 14)"];
+  n22 [label="ASSIGN\n(line 13)"];
+  n23 [label="VAR\na\n(line 13)"];
+  n22 -> n23;
+  n24 [label="CALL\nfoo()\n(line 13)"];
+  n22 -> n24;
+  n21 -> n22;
+  n0 -> n21;
 }

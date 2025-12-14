@@ -520,11 +520,12 @@ variabledefs :              variabledefs T_COMMA variabledef                    
                             | variabledef                                       { $$ = $1; }
                             ;
 
-variabledef :               T_ID dims                                           {if (!current_type) current_type = type_error;
+variabledef :               T_ID dims                                           {
+                                                                                    if (!current_type) current_type = type_error;
                                                                                     Type *t = current_type;
                                                                                     if ($2 != NULL) t = attach_array_to_base(current_type, $2);
                                                                                     if (in_param_context) {
-                                                                                        sem_declare_param($1, t, 0, yylineno);   /* is_ref = 0 param by value*/
+                                                                                        sem_declare_param($1, t, 0, yylineno);   /* is_ref = 0*/
                                                                                     } else {
                                                                                         Symbol *s = symtab_insert($1, SYM_VAR, t);
                                                                                         if (!s) YYERROR_FMT("Redeclaration of '%s'", $1);
@@ -546,13 +547,16 @@ method :                    short_func_declaration;
 
 short_func_declaration     : short_par_func_header T_SEMI                                   {
                                                                                                 symtab_leave_scope();
+                                                                                                sem_declare_function(current_function_name,current_function_type,yylineno);
+                                                                                                
                                                                                                 current_function_type = NULL;
                                                                                                 current_function_name  = NULL;
-                                                                                                in_param_context = 0;
+                                                                                                in_param_context       = 0;
                                                                                             }
                             | nopar_func_header T_SEMI
                                                                                             {
                                                                                                 symtab_leave_scope();
+                                                                                                sem_declare_function(current_function_name,current_function_type,yylineno);
                                                                                                 current_function_type = NULL;
                                                                                                 current_function_name  = NULL;
                                                                                                 in_param_context = 0;
@@ -566,25 +570,25 @@ short_par_func_header :     func_header_start T_LPAREN parameter_types T_RPAREN 
 func_header_start :         type_with_list T_ID                                             {
                                                                                                 Type *ret = sem_check_function_return_type($1, yylineno);
 
-                                                                                                sem_declare_function($2, ret, yylineno);
+                                                                                                sem_param_list_reset();
 
                                                                                                 current_function_type  = ret;
                                                                                                 current_function_name  = $2;
                                                                                                 in_param_context       = 1;
-                                                                                                symtab_enter_scope();      /* ΤΩΡΑ μπαίνουμε στο scope 1 (params/locals) */
+                                                                                                symtab_enter_scope();
                                                                                             }
                             ;
 
 parameter_types :           parameter_types T_COMMA typename pass_list_dims                 {
-                                                                                                int is_ref = $4;          /* 1 αν &, 0 αλλιώς */
-                                                                                                sem_register_param_type(current_type, is_ref, yylineno);
+                                                                                                int is_ref = $4;
+                                                                                                sem_param_list_add($3,is_ref);
                                                                                             }
                             | typename pass_list_dims                                       {
                                                                                                 int is_ref = $2;
-                                                                                                sem_register_param_type(current_type, is_ref, yylineno);
+                                                                                                sem_param_list_add($1,is_ref);
                                                                                             }
                             ;
-pass_list_dims :            T_REFER                                                                     { $$ = 1; } 
+pass_list_dims :            T_REFER                                                                     { $$ = 1; }
                             | listspec dims                                                             { $$ = 0; }
                             ;
 nopar_func_header :         func_header_start T_LPAREN T_RPAREN                                         {in_param_context = 0;};
@@ -607,24 +611,26 @@ init_variabledef :          variabledef initializer                             
 func_declaration :          short_func_declaration                                                      {$$.node = NULL;}
                             | full_func_declaration                                                     {$$.node = $1.node;}   ;                         
 full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRACE                      {
+                                                                                                            symtab_leave_scope();
                                                                                                             sem_define_function(current_function_name, current_function_type, yylineno);
 
                                                                                                             ASTNode *body = $3.node;
                                                                                                             $$.node = ast_make_func_decl(current_function_name, body, yylineno);
 
-                                                                                                            symtab_leave_scope();
+                                                                                                            
                                                                                                             current_function_type = NULL;
                                                                                                             current_function_name = NULL;
                                                                                                             in_param_context = 0;
                                                                                                         }
                             | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { symtab_leave_scope();   in_param_context = 0; current_function_type = NULL; $$.node = $3.node;};
                             | nopar_func_header T_LBRACE  decl_statements T_RBRACE                      {
+                                                                                                            symtab_leave_scope();
                                                                                                             sem_define_function(current_function_name, current_function_type, yylineno);
 
                                                                                                             ASTNode *body = $3.node;
                                                                                                             $$.node = ast_make_func_decl(current_function_name, body, yylineno);
 
-                                                                                                            symtab_leave_scope();
+                                                                                                            
                                                                                                             current_function_type  = NULL;
                                                                                                             current_function_name  = NULL;
                                                                                                             in_param_context       = 0;

@@ -7,6 +7,11 @@
 #include "ast.h"
 #include "symbol.h"
 
+typedef struct {
+    Type *type;   /* τύπος παραμέτρου */
+    int   is_ref; /* 0 = by value, 1 = by reference (&) */
+} ParamInfo;
+
 void sem_fatal(const char *fmt, ...);
 
 Type *sem_use_variable(const char *name, int line);
@@ -58,6 +63,9 @@ static int count_args(ASTNode *args);
 static void check_args_rec(ASTNode *args, Symbol *func, int *index, int line);
 
 void sem_register_param_type(Type *type, int is_ref, int line);
+
+void   sem_param_list_reset(void);
+void   sem_param_list_add(Type *t, int is_ref);
 
 
 //Enums
