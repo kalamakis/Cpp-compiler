@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include "ast.h"
 #include "symbol.h"
+#include "symbolTable.h"
+#include "hashtable.h"
 
 #include "semantics.h"
 
@@ -86,6 +88,45 @@ bool types_compatible_for_assignment(Type *lhs, Type *rhs) {
     /* 5. Οτιδήποτε άλλο → όχι συμβατό */
     return false;
 }
+
+
+static ASTNode *strip_indexes(ASTNode *n){
+    while (n && n->kind == AST_INDEX) {
+        n = n->u.index.array;
+    }
+    return n;
+}
+
+void sem_check_writable_lvalue(ASTNode *n, int line){
+    if (!n) {
+        sem_fatal("invalid assigment (line %d)", line);
+    }
+
+    // lvalue επιτρέπουμε μόνο VAR ή INDEX
+    if (n->kind != AST_VAR && n->kind != AST_INDEX) {
+        sem_fatal("not compatible lvalue (line %d)", line);
+    }
+
+    // βρες το “root” σύμβολο: για a[i][j] -> a
+    ASTNode *root = strip_indexes(n);
+    if (!root || root->kind != AST_VAR) {
+        sem_fatal("left hand side must refer to a variable (line %d)", line);
+    }
+
+    Symbol *s = root->u.var.sym;
+    if (!s) {
+        sem_fatal("internal: lvalue without symbol (line %d)", line);
+    }
+
+    // απαγόρευση εγγραφής σε const / enum const / function
+    if (s->kind == SYM_CONST || s->kind == SYM_ENUM_CONST) {
+        sem_fatal("cannot modify constant '%s' at line %d", s->name, line);
+    }
+    if (s->kind == SYM_FUNC) {
+        sem_fatal("cannot assign to function '%s' at line %d", s->name, line);
+    }
+}
+
 
 Type *sem_check_assignment(Type *left, Type *right, int line){
     if (!left || left == type_error || !right || right == type_error) {
@@ -461,7 +502,7 @@ Type *sem_check_function_return_type(Type *ret, int line) {
     else if(ret->kind == TYPE_LIST) // PREPEI NA EPISTREFETAI H DIEYUHNSH TOU PRVTOU STOIXEIOU
         return ret;
     else
-        sem_fatal("function cannot return this type (line %d)", line); /* κλάσεις, ενώσεις, πίνακες, κτλ. */
+        sem_fatal("function cannot return this type (line %d)", line);
 
     return type_error;
 }
@@ -492,10 +533,10 @@ Type *sem_check_return(Type *func_type, Type *ret_type, int line) {
 }
 
 Symbol *sem_declare_function(const char *name, Type *ret_type, int line){
-    Symbol *s = symtab_lookup(name);
+    Symbol *s = symtab_lookup_in_scope(name, 0);
     if (!s) {
         /* Πρώτο prototype*/
-        s = symtab_insert(name, SYM_FUNC, ret_type);
+        s = symtab_insert_scoped(name, SYM_FUNC, ret_type, 0);
         if (!s) {
             fprintf(stderr, "Semantic error: cannot insert function '%s' (line %d)\n",
                     name, line);
@@ -646,6 +687,31 @@ void sem_param_list_add(Type *t, int is_ref)
     current_params[current_param_count].type  = t;
     current_params[current_param_count].is_ref = is_ref;
     current_param_count++;
+}
+
+void sem_check_undefined_prototypes(void)
+{
+    int err = 0;
+    if (!g_symtab) return;
+
+    for (hash_size i = 0; i < g_symtab->size; ++i) {
+        struct hashnode_s *n = g_symtab->nodes[i];
+        while (n) {
+            Symbol *s = (Symbol *)n->data;
+
+            // μόνο global scope funcs (π.χ. scope==0)
+            if (s && s->kind == SYM_FUNC && n->scope == 0 &&
+                s->u.func.is_forward_decl &&
+                s->name && strcmp(s->name, "main") != 0)
+            {
+                fprintf(stderr,"Semantic error: function '%s' declared but not defined/used\n",s->name);
+                err++;
+            }
+            n = n->next;
+        }
+    }
+
+    if (err) exit(EXIT_FAILURE);
 }
 
 

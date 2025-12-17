@@ -50,13 +50,16 @@ void symtab_leave_scope(void)
     current_scope--;
 }
 
-Symbol *symtab_insert(const char *name, SymbolKind kind, Type *type)
-{
+Symbol *symtab_insert(const char *name, SymbolKind kind, Type *type){
+    return symtab_insert_scoped(name, kind, type, current_scope);
+}
+
+Symbol *symtab_insert_scoped(const char *name, SymbolKind kind, Type *type, int scope){
     Symbol *sym;
 
     // Έλεγχος για redeclaration στο ίδιο scope 
-    sym = (Symbol*)hashtbl_lookup(g_symtab, name, current_scope);
-    if (sym && sym->scope == current_scope) {
+    sym = (Symbol*)hashtbl_lookup(g_symtab, name, scope);
+    if (sym && sym->scope == scope) {
 
         return NULL;
     }
@@ -67,17 +70,17 @@ Symbol *symtab_insert(const char *name, SymbolKind kind, Type *type)
     sym->name   = strdup(name);
     sym->kind   = kind;
     sym->type   = type;
-    sym->scope  = current_scope;
+    sym->scope  = scope;
     //parameters
     sym->is_ref_param = 0;
     sym->u.func.param_count   = 0;
     sym->u.func.params        = NULL;
     sym->u.func.is_forward_decl = 0;
 
-    sym->storage = (current_scope == 0) ? STOR_GLOBAL : STOR_LOCAL;
+    sym->storage = (scope == 0) ? STOR_GLOBAL : STOR_LOCAL;
     sym->offset = -1;
 
-    if (hashtbl_insert(g_symtab, name, sym, current_scope) != 0) {
+    if (hashtbl_insert(g_symtab, name, sym, scope) != 0) {
         free_symbol(sym);
         return NULL;
     }
@@ -89,6 +92,10 @@ Symbol *symtab_insert(const char *name, SymbolKind kind, Type *type)
 Symbol *symtab_lookup(const char *name)
 {
     return (Symbol*)hashtbl_lookup(g_symtab, name, current_scope);
+}
+
+Symbol *symtab_lookup_in_scope(const char *name, int scope){
+    return (Symbol*)hashtbl_lookup(g_symtab, name, scope);
 }
 
 //search in curr scope

@@ -41,7 +41,7 @@
 %union {
     int      intval;
     float    floatval;
-    char    *strval;
+    char     *strval;
     char     charval;
     Type    *type;
     ASTNode *node;
@@ -159,6 +159,7 @@
 program :                   global_declarations main_function                   {
                                                                                     extern ASTNode *ast_root;
                                                                                     ast_root = ast_make_program($1, $2.node, yylineno);
+                                                                                    //sem_check_undefined_prototypes();
                                                                                 }             
                             ;
 global_declarations :       global_declarations global_declaration              {   if ($1) $$ = ast_list_append($1, $2,yylineno);
@@ -304,6 +305,7 @@ expression
                                                                                 }
                             | T_INCDEC variable %prec PREFIX
                                                                                 {
+                                                                                    sem_check_writable_lvalue($2.node, yylineno);
                                                                                     Type *t = sem_unary_incdec($2.type, yylineno);
                                                                                     ASTOp op = (strcmp($1, "++") == 0) ? OP_PRE_INC : OP_PRE_DEC;
                                                                                     $$.type = t;
@@ -311,6 +313,7 @@ expression
                                                                                 }
                             | variable T_INCDEC %prec POSTFIX
                                                                                 {
+                                                                                    sem_check_writable_lvalue($1.node, yylineno);
                                                                                     Type *t = sem_unary_incdec($1.type, yylineno);
                                                                                     ASTOp op = (strcmp($2, "++") == 0) ? OP_POST_INC : OP_POST_DEC;
                                                                                     $$.type = t;
@@ -407,6 +410,7 @@ general_expression
                                                                                 }
                             ;
 assignment :                variable T_ASSIGN assignment                        {
+                                                                                    sem_check_writable_lvalue($1.node, yylineno);
                                                                                     Type *t = sem_check_assignment($1.type, $3.type, yylineno);
                                                                                     $$.type = t;
                                                                                     $$.node = ast_make_assign($1.node, $3.node, t, yylineno);
@@ -612,7 +616,7 @@ func_declaration :          short_func_declaration                              
                             | full_func_declaration                                                     {$$.node = $1.node;}   ;                         
 full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRACE                      {
                                                                                                             symtab_leave_scope();
-                                                                                                            sem_define_function(current_function_name, current_function_type, yylineno);
+                                                                                                            //sem_define_function(current_function_name, current_function_type, yylineno);
 
                                                                                                             ASTNode *body = $3.node;
                                                                                                             $$.node = ast_make_func_decl(current_function_name, body, yylineno);
@@ -625,7 +629,7 @@ full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRA
                             | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { symtab_leave_scope();   in_param_context = 0; current_function_type = NULL; $$.node = $3.node;};
                             | nopar_func_header T_LBRACE  decl_statements T_RBRACE                      {
                                                                                                             symtab_leave_scope();
-                                                                                                            sem_define_function(current_function_name, current_function_type, yylineno);
+                                                                                                            //sem_define_function(current_function_name, current_function_type, yylineno);
 
                                                                                                             ASTNode *body = $3.node;
                                                                                                             $$.node = ast_make_func_decl(current_function_name, body, yylineno);
@@ -636,8 +640,8 @@ full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRA
                                                                                                             in_param_context       = 0;
                                                                                                         }
                             ;
-full_par_func_header :      class_func_header_start T_LPAREN parameter_list T_RPAREN                    {in_param_context = 0;}
-                            | func_header_start T_LPAREN parameter_list T_RPAREN                        {in_param_context = 0;}    
+full_par_func_header :      class_func_header_start T_LPAREN parameter_list T_RPAREN                    {sem_define_function(current_function_name, current_function_type, yylineno); in_param_context = 0;}
+                            | func_header_start T_LPAREN parameter_list T_RPAREN                        {sem_define_function(current_function_name, current_function_type, yylineno); in_param_context = 0;}    
                             ;
 class_func_header_start :   type_with_list func_class T_ID                      {Type *ret = $1;
                                                                                     if (!symtab_insert($3, SYM_FUNC, ret)) {
@@ -739,7 +743,7 @@ io_statement :              T_CIN T_INP in_list T_SEMI                          
 in_list :                   in_list T_INP in_item
                             | in_item
                             ;
-in_item :                   variable;
+in_item :                   variable                                                        {sem_check_writable_lvalue($1.node, yylineno);};
 out_list :                  out_list T_OUT out_item
                             | out_item
                             ;
@@ -781,6 +785,7 @@ int main(int argc, char *argv[]){
     init_types(); 
 
     yyparse();
+    sem_check_undefined_prototypes();
 
     extern ASTNode *ast_root;
     if (ast_root) {

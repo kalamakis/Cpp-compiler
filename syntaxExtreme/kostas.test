@@ -1,53 +1,7 @@
-int g;
-float h;
-
-/* Πρωτότυπα συναρτήσεων */
-int add(int , int );
-float mix(float , int , float & );
-
-/* Πρωτότυπο που δεν ορίζεται ποτέ (για μελλοντικό check) */
-int never_defined(int );
-
-/* Ορισμός με παραμέτρους by value */
-int add(int a, int b) {
-    int res;
-    res = a + b;
-    return res;
+int foo(int x){
+    return 9;
 }
 
-/* Ορισμός με παράμετρο by reference */
-float mix(float x, int y, float & refv) {
-    float tmp;
-    tmp = refv + x;
-    refv = tmp;
-    return tmp + y;
-}
+// int foo2();
 
-int main() {
-    int i;
-    int j;
-    float f;
-
-    i = 10;
-    j = 5;
-    f = 1.5;
-
-    /* --- ΣΩΣΤΕΣ ΚΛΗΣΕΙΣ --- */
-
-    i = add(i, j);          // int, int -> int
-    f = mix(2.5, i, f);     // float, int, float&
-
-    /* --- ΛΑΘΟΣ ΚΛΗΣΕΙΣ (Uncomment όταν βάλεις ελέγχους) --- */
-
-    /* 1) Λάθος πλήθος παραμέτρων */
-     //i = add(i);              // ERROR: 1 arg αντί για 2
-
-    /* 2) Λάθος τύποι */
-     i = add(f, j);           // ERROR: πρώτο arg float αντί για int
-     f = mix(i, j, i);        // ERROR: 3ο arg int αντί για float&
-
-    /* 3) Κλήση συνάρτησης χωρίς ορισμό (μόνο prototype) */
-     i = never_defined(3);    // αργότερα μπορείς να το ελέγξεις στο τέλος του compile
-
-    return 0;
-}
+int main() { foo(1);}

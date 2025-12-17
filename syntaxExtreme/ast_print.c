@@ -27,6 +27,17 @@ static void dot_fprint_escaped(FILE *out, const char *s) {
     }
 }
 
+static const char *stor_to_string(StorageClass s) {
+    switch (s) {
+        case STOR_GLOBAL: return "GLOBAL";
+        case STOR_LOCAL:  return "LOCAL";
+        case STOR_PARAM:  return "PARAM";
+        case STOR_FIELD:  return "FIELD";
+        case STOR_TEMP:   return "TEMP";
+        default:          return "?";
+    }
+}
+
 /* ---------------- Type pretty print ---------------- */
 
 static void type_to_string_rec(Type *t, char *buf, size_t cap) {
@@ -178,13 +189,26 @@ static int ast_print_dot_rec(ASTNode *n, FILE *out) {
         case AST_VAR:
             if (n->u.var.name) {
                 if (n->u.var.sym) {
-                    /* show a tiny bit of symbol info without turning the graph into Wikipedia */
-                    snprintf(extra, sizeof(extra), "%s\\n(sym:%s scope:%d)",
-                             n->u.var.name,
-                             symkind_to_string(n->u.var.sym->kind),
-                             n->u.var.sym->scope);
+                    Symbol *s = n->u.var.sym;
+
+                    char symt[256]; symt[0] = '\0';
+                    if (s->type && s->type != type_error) type_to_string_rec(s->type, symt, sizeof(symt));
+
+                    snprintf(extra, sizeof(extra),
+                        "%s"
+                        "\n[sym @%p]"
+                        "\nkind:%s(%d) scope:%d"
+                        "\nstor:%s(%d) off:%d ref:%d"
+                        "\n%s%s",
+                        n->u.var.name,
+                        (void*)s,
+                        symkind_to_string(s->kind), (int)s->kind, s->scope,
+                        stor_to_string(s->storage), (int)s->storage, s->offset, s->is_ref_param,
+                        symt[0] ? "\nsymtype:" : "",
+                        symt[0] ? symt : ""
+                    );
                 } else {
-                    snprintf(extra, sizeof(extra), "%s", n->u.var.name);
+                    snprintf(extra, sizeof(extra), "%s\\n[sym NULL]", n->u.var.name);
                 }
             }
             break;
@@ -241,10 +265,17 @@ static int ast_print_dot_rec(ASTNode *n, FILE *out) {
             break;
 
         case AST_CALL:
-            if (n->u.call.func &&
-                n->u.call.func->kind == AST_VAR &&
-                n->u.call.func->u.var.name) {
-                snprintf(extra, sizeof(extra), "%s()", n->u.call.func->u.var.name);
+                if (n->u.call.func && n->u.call.func->kind == AST_VAR) {
+                ASTNode *fv = n->u.call.func;
+                const char *fname = fv->u.var.name ? fv->u.var.name : "<anon>";
+                if (fv->u.var.sym) {
+                    snprintf(extra, sizeof(extra), "%s()\\ncallee kind:%s(%d) scope:%d",
+                            fname,
+                            symkind_to_string(fv->u.var.sym->kind), (int)fv->u.var.sym->kind,
+                            fv->u.var.sym->scope);
+                } else {
+                    snprintf(extra, sizeof(extra), "%s()\\ncallee sym NULL", fname);
+                }
             } else {
                 snprintf(extra, sizeof(extra), "call");
             }

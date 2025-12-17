@@ -25,6 +25,8 @@ int is_list(TypeKind k);
 static int is_composite(TypeKind k);
 bool types_compatible_for_assignment(Type *lhs, Type *rhs);
 
+void sem_check_writable_lvalue(ASTNode *n, int line);
+
 Type *sem_check_assignment(Type *left, Type *right, int line);
 
 //expression
@@ -65,6 +67,7 @@ static void check_args_rec(ASTNode *args, Symbol *func, int *index, int line);
 void   sem_param_list_reset(void);
 void   sem_param_list_add(Type *t, int is_ref);
 
+void sem_check_undefined_prototypes(void);
 
 //Enums
 
