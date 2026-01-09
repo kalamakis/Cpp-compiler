@@ -17,6 +17,7 @@ static int       current_param_count = 0;
 static Symbol *current_function_symbol = NULL;
 static int collecting_signature = 0;  // 1 = χτίζουμε, 0 = ελέγχουμε
 static int current_param_index = 0;
+static int loop_nesting_level = 0;
 
 void sem_fatal(const char *fmt, ...){
     va_list ap;
@@ -799,4 +800,40 @@ Type *sem_check_condition(Type *cond, int line) {
         sem_fatal("condition in if/while/for must be of type int (line %d)", line);
     }
     return type_int;
+}
+
+//COUT 
+void sem_check_printable(Type *t, int line) {
+    if (!t || t == type_error) return;
+
+    /* 1. Βασικοί τύποι (int, float, char, string) είναι ΟΚ */
+    if (is_basic(t->kind)) {
+        return;
+    }
+
+    /* 2. Enums είναι ΟΚ (τυπώνονται ως integers) */
+    if (t->kind == TYPE_ENUM) {
+        return;
+    }
+
+    /* 3. Όλα τα άλλα απαγορεύονται */
+    sem_fatal("Type is not printable using cout. Only basic types (int, float, char, string) are allowed (line %d)", line);
+}
+
+void sem_enter_loop(void) {
+    loop_nesting_level++;
+}
+
+void sem_leave_loop(void) {
+    if (loop_nesting_level > 0) {
+        loop_nesting_level--;
+    } else {
+        sem_fatal("Internal compiler error: loop nesting level went negative");
+    }
+}
+
+void sem_check_break_continue(const char *op_name, int line) {
+    if (loop_nesting_level <= 0) {
+        sem_fatal("Statement '%s' not allowed outside of loop (line %d)", op_name, line);
+    }
 }

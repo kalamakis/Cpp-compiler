@@ -230,6 +230,24 @@ ASTNode *ast_make_index(ASTNode *array, ASTNode *index, Type *t, int line)
     return n;
 }
 
+ASTNode *ast_make_cin(ASTNode *vars, int line)
+{
+    ASTNode *n = ast_new(AST_CIN, NULL, line);
+    
+    /* Αποθηκεύουμε τη λίστα των μεταβλητών εισόδου */
+    n->u.io_stmt.io_list = vars;
+    
+    return n;
+}
 
+ASTNode *ast_make_cout(ASTNode *exprs, int line)
+{
+    ASTNode *n = ast_new(AST_COUT, NULL, line);
+    
+    /* Αποθηκεύουμε τη λίστα των εκφράσεων εξόδου */
+    n->u.io_stmt.io_list = exprs;
+    
+    return n;
+}
 
 

@@ -132,6 +132,8 @@ static const char *kind_to_string(ASTKind k) {
         case AST_CONST:     return "CONST";
         case AST_LIST:      return "LIST";
         case AST_INDEX:     return "INDEX";
+        case AST_CIN:       return "CIN";
+        case AST_COUT:      return "COUT";
         default:            return "NODE";
     }
 }
@@ -146,7 +148,7 @@ static const char *symkind_to_string(SymbolKind k) {
         case SYM_ENUM_CONST: return "ENUM_CONST";
         default:             return "?";
     }
-}
+}   
 
 /* ---------------- DOT printing core ---------------- */
 
@@ -283,6 +285,14 @@ static int ast_print_dot_rec(ASTNode *n, FILE *out) {
 
         case AST_INDEX:
             snprintf(extra, sizeof(extra), "[]");
+            break;
+
+        case AST_CIN:
+            snprintf(extra, sizeof(extra), "stream >>");
+            break;
+        
+        case AST_COUT:
+            snprintf(extra, sizeof(extra), "stream <<");
             break;
 
         default:

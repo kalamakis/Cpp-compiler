@@ -79,7 +79,14 @@ Type *sem_use_enum_constant(Type *enum_type, const char *const_name, int line);
 
 
 //STATEMENTS
-
 Type *sem_check_condition(Type *cond, int line);
+
+//COUT
+void sem_check_printable(Type *t, int line);
+
+//Loop specific commands
+void sem_enter_loop(void);
+void sem_leave_loop(void);
+void sem_check_break_continue(const char *op_name, int line);
 
 #endif

@@ -136,6 +136,7 @@
     var_declaration variabledefs variabledef 
     init_variabledefs init_variabledef
     global_var_declaration
+    in_list in_item out_list out_item
  
 
 %left T_COMMA
@@ -736,19 +737,29 @@ return_statement :          T_RETURN optexpr T_SEMI                             
                                                                                                 $$.node = ast_make_return($2.node, yylineno);
                                                                                             }
                             ;
-io_statement :              T_CIN T_INP in_list T_SEMI                                      {//TODO: φτιάξε AST για cin
-                                                                                                $$.node = NULL;
+io_statement :              T_CIN T_INP in_list T_SEMI                                      {
+                                                                                                $$.node = ast_make_cin($3, yylineno);
                                                                                             }
-                            | T_COUT T_OUT out_list T_SEMI                                  {$$.node = NULL;}
+                            | T_COUT T_OUT out_list T_SEMI                                  {
+                                                                                                $$.node = ast_make_cout($3, yylineno);
+                                                                                            }
                             ;
-in_list :                   in_list T_INP in_item
-                            | in_item
+in_list :                   in_list T_INP in_item                                           {$$ = ast_list_append($1, $3, yylineno);}
+                            | in_item                                                       {$$ = $1;}
                             ;
-in_item :                   variable                                                        {sem_check_writable_lvalue($1.node, yylineno);};
-out_list :                  out_list T_OUT out_item
-                            | out_item
+in_item :                   variable                                                        {
+                                                                                                sem_check_writable_lvalue($1.node, yylineno);
+                                                                                                $$ = $1.node;
+                                                                                            }
                             ;
-out_item :                  general_expression;
+out_list :                  out_list T_OUT out_item                                         {$$ = ast_list_append($1, $3, yylineno);}
+                            | out_item                                                      {$$ = $1;}
+                            ;
+out_item :                  general_expression                                              {
+                                                                                                sem_check_printable($1.type, yylineno);
+                                                                                                $$ = $1.node;
+                                                                                            }
+                            ;
 comp_statement :            T_LBRACE {symtab_enter_scope();} decl_statements T_RBRACE    { symtab_leave_scope(); $$.node = $3.node;};
 main_function :             main_header T_LBRACE decl_statements T_RBRACE   { symtab_leave_scope();  
                                                                                 current_function_type = NULL; 

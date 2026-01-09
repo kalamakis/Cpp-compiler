@@ -19,6 +19,9 @@ typedef enum {
     AST_FOR,
     AST_RETURN,
 
+    AST_CIN,
+    AST_COUT,
+
     AST_BINOP,
     AST_UNOP,
     AST_CALL,
@@ -88,6 +91,9 @@ struct ASTNode {
 
         /* λίστα */
         struct { struct ASTNode *head; struct ASTNode *tail; } list;
+
+        /*IO πεδίο για CIN, COUT*/
+        struct { struct ASTNode *io_list; } io_stmt;
     } u;
 
 
@@ -126,7 +132,7 @@ ASTNode *ast_make_call(ASTNode *func, ASTNode *args, Type *t, int line);
 ASTNode *ast_make_func_decl(char *name, ASTNode *body, int line);
 ASTNode *ast_make_index(ASTNode *array, ASTNode *index, Type *t, int line);
 
-
-
+ASTNode *ast_make_cin(ASTNode *vars, int line);
+ASTNode *ast_make_cout(ASTNode *exprs, int line);
 
 #endif
