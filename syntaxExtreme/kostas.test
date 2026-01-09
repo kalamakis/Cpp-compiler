@@ -1,7 +1,8 @@
-int foo(int x){
-    return 9;
+int main() {
+  int a[10];
+  int x;
+  x = SIZEOF((char));      // 1
+  x = SIZEOF(a);        // 10 (αν a έχει size 10)
+  x = SIZEOF(a[0]);     // 1
+  return 0;
 }
-
-// int foo2();
-
-int main() { foo(1);}

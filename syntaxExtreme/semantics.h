@@ -38,6 +38,7 @@ Type *sem_unary_arith(Type *t, int line);
 Type *sem_unary_not(Type *t, int line);
 Type *sem_unary_incdec(Type *t, int line);
 Type *sem_unary_sign(Type *t, int line);
+long sem_sizeof_bytes(Type *t, int line);
 
 Symbol *sem_define_const(Type *t, const char *name, ASTNode *init_expr, int line);
 

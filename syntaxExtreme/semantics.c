@@ -319,6 +319,50 @@ Type *sem_binary_equality(Type *left, Type *right, int line){
     return type_error;
 }
 
+static long align4(long n) {
+    return (n + 3) & ~3L;
+}
+
+long sem_sizeof_bytes(Type *t, int line) {
+    if (!t || t == type_error) return 0;
+
+    switch (t->kind) {
+        case TYPE_CHAR:   return 1;
+        case TYPE_INT:    return 4;
+        case TYPE_FLOAT:  return 4;
+        case TYPE_ENUM:   return 4;
+
+        case TYPE_STRING:
+            return 256;
+
+        case TYPE_LIST:
+            return 4;  // pointer
+
+        case TYPE_ARRAY: {
+            // size==0 unsized. Treat as address.
+            if (t->array_size <= 0) return 4;
+
+            long elem = sem_sizeof_bytes(t->elem_type, line);
+            if (elem <= 0) elem = 1;
+            return (long)t->array_size * elem;
+        }
+
+        case TYPE_VOID:
+            sem_fatal("sizeof(void) is not allowed (line %d)", line);
+            return 0;
+
+        case TYPE_CLASS:
+        case TYPE_UNION:
+            // You can change this later when you implement layout.
+            sem_fatal("sizeof(class/union) not supported yet (line %d)", line);
+            return 0;
+
+        default:
+            return 0;
+    }
+}
+
+
 Symbol *sem_define_const(Type *t, const char *name, ASTNode *init_expr, int line)
 {
     if (!t || t == type_error) {

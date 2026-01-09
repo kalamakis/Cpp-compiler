@@ -300,8 +300,9 @@ expression
                                                                                 }
                             | T_SIZEOP expression
                                                                                 {
+                                                                                    long sz = sem_sizeof_bytes($2.type, yylineno);
                                                                                     $$.type = type_int;
-                                                                                    $$.node = ast_make_unop(OP_SIZEOF, $2.node, type_int, yylineno);
+                                                                                    $$.node = ast_make_const_int(sz, yylineno);
                                                                                 }
                             | T_INCDEC variable %prec PREFIX
                                                                                 {
