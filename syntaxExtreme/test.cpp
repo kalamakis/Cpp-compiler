@@ -1,13 +1,12 @@
-/* test_io.c */
 int main() {
-    int x;
-    float y;
+    int i;
 
-    // Test CIN
-    cin >> x >> y;
+    // Σωστό loop
+    for(i=0; i<10; i++) {
+        if (i == 5) break;    // OK
+        if (i == 2) continue; // OK
+    }
 
-    // Test COUT
-    cout << x << 3.14 << "Hello";
-
-    return 0;
+    // ΛΑΘΟΣ: break έξω από loop
+    // break;
 }

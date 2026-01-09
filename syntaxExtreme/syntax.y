@@ -683,6 +683,8 @@ declarations :              declarations decltype type_with_list  variabledefs T
                             | decltype type_with_list variabledefs T_SEMI
                             ;
 decltype :                  T_STATIC | %empty         {;};
+loop_enter :                %empty                                              { sem_enter_loop(); } 
+                            ;
 statements :                statements statement                                {
                                                                                     if ($1.node)
                                                                                         $$.node = ast_list_append($1.node, $2.node, yylineno);
@@ -699,8 +701,14 @@ statement :                 expression_statement                                
                             | return_statement                                               { $$ = $1; }
                             | io_statement                                                   { $$ = $1; }
                             | comp_statement                                                 { $$ = $1; }
-                            | T_CONTINUE T_SEMI                                              {$$.node = NULL;}
-                            | T_BREAK T_SEMI                                                 {$$.node = NULL;}
+                            | T_CONTINUE T_SEMI                                              {
+                                                                                                sem_check_break_continue("continue", yylineno);
+                                                                                                $$.node = NULL;
+                                                                                             }
+                            | T_BREAK T_SEMI                                                 {
+                                                                                                sem_check_break_continue("break", yylineno);
+                                                                                                $$.node = NULL;
+                                                                                             }
                             | T_SEMI                                                         {$$.node = NULL;}
                             ;
 expression_statement :      general_expression T_SEMI                                        {$$.node = $1.node;};
@@ -718,15 +726,17 @@ if_statement :              T_IF T_LPAREN general_expression T_RPAREN statement 
 if_tail:                    T_ELSE statement                                                { $$.node = $2.node; }
                             | %empty          %prec LOWER_THAN_ELSE                         { $$.node = NULL; }
                             ;
-while_statement :           T_WHILE T_LPAREN general_expression T_RPAREN statement          {
+while_statement :           T_WHILE T_LPAREN general_expression T_RPAREN loop_enter statement          {
+                                                                                                sem_leave_loop();
                                                                                                 sem_check_condition($3.type, yylineno);
-                                                                                                $$.node = ast_make_while($3.node, $5.node, yylineno);
+                                                                                                $$.node = ast_make_while($3.node, $6.node, yylineno);
                                                                                             }
                             
                             ;
-for_statement :             T_FOR T_LPAREN optexpr T_SEMI optexpr T_SEMI general_expression T_RPAREN statement {
+for_statement :             T_FOR T_LPAREN optexpr T_SEMI optexpr T_SEMI general_expression T_RPAREN loop_enter statement {
+                                                                                                            sem_leave_loop();
                                                                                                             sem_check_condition($5.type, yylineno);
-                                                                                                            $$.node = ast_make_for($3.node, $5.node, $7.node, $9.node, yylineno);
+                                                                                                            $$.node = ast_make_for($3.node, $5.node, $7.node, $10.node, yylineno);
                                                                                                         }
                             ;
 optexpr :                   general_expression                                              {$$ = $1;}
