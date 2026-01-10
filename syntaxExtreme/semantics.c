@@ -19,6 +19,18 @@ static int collecting_signature = 0;  // 1 = χτίζουμε, 0 = ελέγχο�
 static int current_param_index = 0;
 static int loop_nesting_level = 0;
 
+static int  sem_in_function = 0;
+
+static long sem_param_next_off = 0;  // positive offsets from $fp
+static long sem_local_bytes    = 0;  // grows positive, stored as negative offsets
+static long sem_max_local      = 0;  // maximum local usage
+
+#define SEM_MAX_SCOPE_DEPTH 1024
+static long sem_scope_saved[SEM_MAX_SCOPE_DEPTH];
+static int  sem_scope_sp = 0;
+
+static const long SEM_PARAM_BASE_FP = 8; // MIPS32 (saved fp/ra above)
+
 void sem_fatal(const char *fmt, ...){
     va_list ap;
     fprintf(stderr, "Semantic error: ");
@@ -320,11 +332,9 @@ Type *sem_binary_equality(Type *left, Type *right, int line){
     return type_error;
 }
 
-static long align4(long n) {
-    return (n + 3) & ~3L;
-}
+static long sem_align4(long n) { return (n + 3) & ~3L; }
 
-long sem_sizeof_bytes(Type *t, int line) {
+static long sem_sizeof_rec(Type *t, int line) {
     if (!t || t == type_error) return 0;
 
     switch (t->kind) {
@@ -333,17 +343,13 @@ long sem_sizeof_bytes(Type *t, int line) {
         case TYPE_FLOAT:  return 4;
         case TYPE_ENUM:   return 4;
 
-        case TYPE_STRING:
-            return 256;
+        case TYPE_STRING: return 256;
 
-        case TYPE_LIST:
-            return 4;  // pointer
+        case TYPE_LIST:   return 4; // pointer to first node
 
         case TYPE_ARRAY: {
-            // size==0 unsized. Treat as address.
-            if (t->array_size <= 0) return 4;
-
-            long elem = sem_sizeof_bytes(t->elem_type, line);
+            if (t->array_size <= 0) return 4; // unsized => treat as address
+            long elem = sem_sizeof_rec(t->elem_type, line);
             if (elem <= 0) elem = 1;
             return (long)t->array_size * elem;
         }
@@ -354,13 +360,16 @@ long sem_sizeof_bytes(Type *t, int line) {
 
         case TYPE_CLASS:
         case TYPE_UNION:
-            // You can change this later when you implement layout.
             sem_fatal("sizeof(class/union) not supported yet (line %d)", line);
             return 0;
 
         default:
             return 0;
     }
+}
+
+long sem_sizeof_bytes(Type *t, int line) {
+    return sem_sizeof_rec(t, line);
 }
 
 
@@ -710,6 +719,9 @@ Symbol *sem_declare_param(const char *name, Type *type, int is_ref, int line)
 
     sem_param_list_add(type, is_ref);
 
+    //for memory
+    sem_bind_param_symbol(s, line);
+
     return s;
 }
 
@@ -830,4 +842,74 @@ void sem_check_break_continue(const char *op_name, int line) {
     if (loop_nesting_level <= 0) {
         sem_fatal("Statement '%s' not allowed outside of loop (line %d)", op_name, line);
     }
+}
+
+// Frame / offsets (MIPS32)
+
+static Symbol *sem_lookup_global_func(const char *name) {
+    return symtab_lookup_in_scope(name, 0);
+}
+
+void sem_frame_begin(const char *func_name, int line) {
+    (void)func_name; (void)line;
+    sem_in_function = 1;
+
+    sem_param_next_off = SEM_PARAM_BASE_FP;
+    sem_local_bytes = 0;
+    sem_max_local = 0;
+
+    sem_scope_sp = 0;
+    sem_scope_saved[sem_scope_sp++] = 0; // baseline for function scope
+}
+
+void sem_frame_end(const char *func_name, int line) {
+    (void)line;
+    Symbol *f = sem_lookup_global_func(func_name);
+    if (f && f->kind == SYM_FUNC) {
+        // store locals frame size in bytes (aligned) in f->offset
+        f->offset = (int)sem_align4(sem_max_local);
+    }
+
+    sem_in_function = 0;
+    sem_param_next_off = 0;
+    sem_local_bytes = 0;
+    sem_max_local = 0;
+    sem_scope_sp = 0;
+}
+
+void sem_scope_push_offsets(void) {
+    if (!sem_in_function) return;
+    if (sem_scope_sp >= SEM_MAX_SCOPE_DEPTH) sem_fatal("internal: too deep scopes");
+    sem_scope_saved[sem_scope_sp++] = sem_local_bytes;
+}
+
+void sem_scope_pop_offsets(void) {
+    if (!sem_in_function) return;
+    if (sem_scope_sp <= 0) sem_fatal("internal: scope pop underflow");
+    sem_local_bytes = sem_scope_saved[--sem_scope_sp];
+}
+
+void sem_bind_param_symbol(Symbol *s, int line) {
+    if (!sem_in_function || !s || s->kind != SYM_PARAM) return;
+
+    long sz = s->is_ref_param ? 4 : sem_sizeof_bytes(s->type, line);
+    sz = sem_align4(sz);
+
+    s->storage = STOR_PARAM;
+    s->offset  = (int)sem_param_next_off;
+
+    sem_param_next_off += sz;
+}
+
+void sem_bind_var_symbol(Symbol *s, int line) {
+    if (!sem_in_function || !s || s->kind != SYM_VAR) return;
+
+    long sz = sem_sizeof_bytes(s->type, line);
+    sz = sem_align4(sz);
+
+    sem_local_bytes += sz;
+    if (sem_local_bytes > sem_max_local) sem_max_local = sem_local_bytes;
+
+    s->storage = STOR_LOCAL;
+    s->offset  = (int)(-sem_local_bytes);
 }

@@ -45,8 +45,8 @@ void symtab_enter_scope(void)
 
 void symtab_leave_scope(void)
 {
-    if(HASHTBL_SHOW_GET&&HASHTBL_DEBUG) symtab_print();
-    hashtbl_remove_scope(g_symtab, current_scope, free_symbol);
+    if(HASHTBL_SHOW_GET && HASHTBL_DEBUG) symtab_print();
+    hashtbl_remove_scope(g_symtab, current_scope, NULL);
     current_scope--;
 }
 
@@ -175,11 +175,12 @@ void symtab_print(void)
                         }
                     }
 
-                    printf("  %-12s %-10s type=%-8s scope=%d\n",
+                    printf("  %-12s %-10s type=%-8s scope=%d storage=%d offset=%d\n",
                            sym->name ? sym->name : "(noname)",
                            kind_str,
                            type_str,
-                           sym->scope);
+                           sym->scope, sym->storage, sym->offset);
+                    //printf("storage=%d offset=%d\n", sym->storage, sym->offset);
                 }
 
                 node = node->next;

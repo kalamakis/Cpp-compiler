@@ -191,7 +191,6 @@ void *hashtbl_lookup(HASHTBL *hashtbl, const char *key, int scope)
     return best_data;
 }
 
-/* Πιο “καθαρή“ έκδοση του hashtbl_get, χωρίς printf, με callback free_data */
 void hashtbl_remove_scope(HASHTBL *hashtbl, int scope, void (*free_data)(void*))
 {
     hash_size n;
