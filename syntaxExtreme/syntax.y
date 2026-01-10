@@ -726,7 +726,7 @@ if_statement :              T_IF T_LPAREN general_expression T_RPAREN statement 
 if_tail:                    T_ELSE statement                                                { $$.node = $2.node; }
                             | %empty          %prec LOWER_THAN_ELSE                         { $$.node = NULL; }
                             ;
-while_statement :           T_WHILE T_LPAREN general_expression T_RPAREN loop_enter statement          {
+while_statement :           T_WHILE T_LPAREN general_expression T_RPAREN loop_enter statement {
                                                                                                 sem_leave_loop();
                                                                                                 sem_check_condition($3.type, yylineno);
                                                                                                 $$.node = ast_make_while($3.node, $6.node, yylineno);

@@ -806,18 +806,15 @@ Type *sem_check_condition(Type *cond, int line) {
 void sem_check_printable(Type *t, int line) {
     if (!t || t == type_error) return;
 
-    /* 1. Βασικοί τύποι (int, float, char, string) είναι ΟΚ */
     if (is_basic(t->kind)) {
         return;
     }
 
-    /* 2. Enums είναι ΟΚ (τυπώνονται ως integers) */
     if (t->kind == TYPE_ENUM) {
         return;
     }
 
-    /* 3. Όλα τα άλλα απαγορεύονται */
-    sem_fatal("Type is not printable using cout. Only basic types (int, float, char, string) are allowed (line %d)", line);
+    sem_fatal("Type is not printable, only basic types (line %d)", line);
 }
 
 void sem_enter_loop(void) {
@@ -828,7 +825,7 @@ void sem_leave_loop(void) {
     if (loop_nesting_level > 0) {
         loop_nesting_level--;
     } else {
-        sem_fatal("Internal compiler error: loop nesting level went negative");
+        sem_fatal("Internal compiler error: loop");
     }
 }
 
