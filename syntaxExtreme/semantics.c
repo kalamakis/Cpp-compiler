@@ -760,9 +760,6 @@ void sem_check_undefined_prototypes(void)
 }
 
 
-
-
-
 //ENUMS
 void sem_define_enum_constant(Type *enum_type, const char *name, int value, int line) {
     if (!enum_type || enum_type->kind != TYPE_ENUM) {

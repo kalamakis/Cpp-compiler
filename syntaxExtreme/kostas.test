@@ -1,8 +1,4 @@
 int main(){
 
-    int a,b;
-
-    b=1;
-    a=2;
-    cout << a << b;
+    cin >> a ;
 }
