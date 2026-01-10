@@ -250,4 +250,20 @@ ASTNode *ast_make_cout(ASTNode *exprs, int line)
     return n;
 }
 
+/* ast.c */
+
+ASTNode *ast_make_enum_decl(char *name, ASTNode *constants, int line) {
+    ASTNode *n = ast_new(AST_ENUM_DECL, NULL, line);
+    n->u.enum_decl.name = name;
+    n->u.enum_decl.constants = constants; // Λίστα με AST_ENUM_CONST
+    return n;
+}
+
+ASTNode *ast_make_enum_const(char *name, int value, int line) {
+    ASTNode *n = ast_new(AST_ENUM_CONST, type_int, line);
+    n->u.enum_const.name = name;
+    n->u.enum_const.value = value;
+    return n;
+}
+
 

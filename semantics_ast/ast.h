@@ -22,6 +22,9 @@ typedef enum {
     AST_CIN,
     AST_COUT,
 
+    AST_ENUM_DECL,
+    AST_ENUM_CONST,
+
     AST_BINOP,
     AST_UNOP,
     AST_CALL,
@@ -94,6 +97,10 @@ struct ASTNode {
 
         /*IO πεδίο για CIN, COUT*/
         struct { struct ASTNode *io_list; } io_stmt;
+
+        /*Πεδίο για enums*/
+        struct { char *name; struct ASTNode *constants; } enum_decl;
+        struct { char *name; int value; } enum_const;
     } u;
 
 
@@ -134,5 +141,8 @@ ASTNode *ast_make_index(ASTNode *array, ASTNode *index, Type *t, int line);
 
 ASTNode *ast_make_cin(ASTNode *vars, int line);
 ASTNode *ast_make_cout(ASTNode *exprs, int line);
+
+ASTNode *ast_make_enum_decl(char *name, ASTNode *constants, int line);
+ASTNode *ast_make_enum_const(char *name, int value, int line);
 
 #endif

@@ -9,6 +9,7 @@ lex.yy.c
 comp.output 
 comp.tab.c
 comp.tab.h
+tokens.h
 
 syntaxExtreme/parser 
 syntaxExtreme/syntax.tab.c 
@@ -17,3 +18,4 @@ syntaxExtreme/lex.yy.c
 syntaxExtreme/comp.output 
 syntaxExtreme/comp.tab.c
 syntaxExtreme/comp.tab.h
+syntaxExtreme/tokens.h

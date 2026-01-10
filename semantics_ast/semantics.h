@@ -71,12 +71,10 @@ void   sem_param_list_add(Type *t, int is_ref);
 void sem_check_undefined_prototypes(void);
 
 //Enums
-
-void sem_define_enum_constant(Type *enum_type, const char *name, int value, int line);
-// Lookup an enum constant by enum type and constant name
+void sem_enum_start(const char *name, int line);
+void sem_enum_add_const(const char *name, int has_explicit_val, int explicit_val, int line);
 Type *sem_use_enum_constant(Type *enum_type, const char *const_name, int line);
-
-
+void sem_enum_end(void);
 
 //STATEMENTS
 Type *sem_check_condition(Type *cond, int line);
