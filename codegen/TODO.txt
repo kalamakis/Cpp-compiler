@@ -1,0 +1,16 @@
+//ΕΔΩ ΛΕΜΕ ΤΙ ΕΧΟΥΜΕ ΣΚΟΠΟ ΝΑ ΚΑΝΟΥΜΕ 
+
+
+αυτη τη στιγμη αν εχουμε prototype συναρτησης(οχι δεηλωση ) και παμε να καλεσουμε τη συναρτηση δεν βγαζει error
+
+sos συνδεση ast node με symbol / not binding table
+
+bulletproof array/list
+constant arrays are not supported yet
+
+bulletproof enums
+
+classes,fields implementation 
+
+crosscheck με την εκφωνηση 
+

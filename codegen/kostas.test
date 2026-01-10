@@ -1,0 +1,3 @@
+int f(int a, int b) { int x; { int y; } return a; }
+
+int main() { int a; int c; }
