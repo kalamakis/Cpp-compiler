@@ -12,8 +12,11 @@
     #include "settings.h"
     #include "symbolTable.h" 
     #include "semantics.h"
+    #include "ir.h"
 
     extern FILE *yyin;
+    extern IROperand codegen(ASTNode *node);
+    extern void ir_print();
     extern int yylex();
     extern int yylineno;
     void yyerror(const char *s);
@@ -906,9 +909,18 @@ int main(int argc, char *argv[]){
     sem_check_undefined_prototypes();
 
     extern ASTNode *ast_root;
-    if (ast_root) {
-        ast_print(ast_root, "ast.dot");
-    }
+    //if (ast_root) {
+    //    ast_print(ast_root, "ast.dot");
+    //}
+
+    printf("\nGenerating Intermediate Code...\n");
+        
+    // 1. Κάλεσε το Codegen
+    codegen(ast_root);
+    
+    // 2. Τύπωσε το αποτέλεσμα
+    ir_print();
+    //}
 
     fclose(yyin);
 
