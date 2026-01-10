@@ -17,7 +17,13 @@ static int       current_param_count = 0;
 static Symbol *current_function_symbol = NULL;
 static int collecting_signature = 0;  // 1 = χτίζουμε, 0 = ελέγχουμε
 static int current_param_index = 0;
+
+//Loop scope
 static int loop_nesting_level = 0;
+
+//ENUMS
+static Type *current_enum_processing_type = NULL; /* Ποιο enum χτίζουμε τώρα */
+static int   current_enum_counter = 0;
 
 void sem_fatal(const char *fmt, ...){
     va_list ap;
@@ -34,9 +40,21 @@ Type *sem_use_variable(const char *name, int line){
     if (!s) {
         sem_fatal("undeclared identifier '%s' at line %d", name, line);
     }
+    
+    int is_valid = 0;
+    
+    if (s->kind == SYM_VAR || s->kind == SYM_CONST || 
+        s->kind == SYM_PARAM || s->kind == SYM_ENUM_CONST || 
+        s->kind == SYM_FUNC) {
+        is_valid = 1;
+    } 
+    else if (s->kind == SYM_TYPE && s->type && s->type->kind == TYPE_ENUM) {
+        /* Ειδική εξαίρεση για Enums */
+        is_valid = 1;
+    }
 
-    if (s->kind != SYM_VAR && s->kind != SYM_CONST && s->kind != SYM_PARAM && s->kind != SYM_ENUM_CONST && s->kind != SYM_FUNC) {
-        sem_fatal("'%s' is not a variable/function at line %d", name, line);
+    if (!is_valid) {
+        sem_fatal("'%s' is not a variable, function, or enum type at line %d", name, line);
     }
 
     if (!s->type) {
@@ -125,6 +143,11 @@ void sem_check_writable_lvalue(ASTNode *n, int line){
     }
     if (s->kind == SYM_FUNC) {
         sem_fatal("cannot assign to function '%s' at line %d", s->name, line);
+    }
+
+    //Απαγόρευση ανάθεσης σε όνομα τύπου
+    if (s->kind == SYM_TYPE) {
+        sem_fatal("cannot assign to type name '%s' at line %d", s->name, line);
     }
 }
 
@@ -216,27 +239,30 @@ Type *sem_binary_arith(Type *left, Type *right, int line){
 Type *sem_binary_relational(Type *left, Type *right, int line){
     if (!left || left == type_error || !right || right == type_error)
         return type_error;
-    /* Επιτρέπεται:
-       - numeric vs numeric,
-       - char vs char,
-       - string vs string,
-       - enum vs ίδιο enum.
-    */
-    if (is_numeric(left->kind) && is_numeric(right->kind)) {
-        return type_int;
-    }
-    if (left->kind == TYPE_CHAR && right->kind == TYPE_CHAR) {
-        return type_int;
-    }
-    if (left->kind == TYPE_STRING && right->kind == TYPE_STRING) {
-        return type_int;
-    }
+
     if (left->kind == TYPE_ENUM && right->kind == TYPE_ENUM) {
         if (left != right) {
+             if (left->enum_name && right->enum_name && 
+                 strcmp(left->enum_name, right->enum_name) == 0) {
+                 return type_int; 
+             }
             sem_fatal("relational comparison between different enum types (line %d)", line);
         }
         return type_int;
     }
+
+    if ((left->kind == TYPE_ENUM && right->kind == TYPE_INT) ||
+        (left->kind == TYPE_INT && right->kind == TYPE_ENUM)) {
+        return type_int;
+    }
+
+    if (is_numeric(left->kind) && is_numeric(right->kind)) {
+        return type_int;
+    }
+
+    if (left->kind == TYPE_CHAR && right->kind == TYPE_CHAR) return type_int;
+    if (left->kind == TYPE_STRING && right->kind == TYPE_STRING) return type_int;
+
     sem_fatal("incompatible types in relational expression at line %d", line);
     return type_error;
 }
@@ -286,37 +312,41 @@ Type *sem_binary_equality(Type *left, Type *right, int line){
     if (!left || left == type_error || !right || right == type_error)
         return type_error;
 
-    /* enums: πρέπει να είναι ίδιο enum type */
-    if (left->kind == TYPE_ENUM || right->kind == TYPE_ENUM) {
-        if (left->kind != TYPE_ENUM || right->kind != TYPE_ENUM) {
-            sem_fatal("comparison between enum and non-enum (line %d)", line);
-        }
-        const char *ln = left->enum_name;
-        const char *rn = right->enum_name;
-        if (!ln || !rn || strcmp(ln, rn) != 0) {
-            sem_fatal("incompatible enum types (line %d)", line);
+    if (left->kind == TYPE_ENUM && right->kind == TYPE_ENUM) {
+        if (left != right) { 
+             if (left->enum_name && right->enum_name && 
+                 strcmp(left->enum_name, right->enum_name) == 0) {
+                 return type_int;
+             }
+             sem_fatal("comparison between different enum types (line %d)", line);
         }
         return type_int;
     }
-    /* strings: string == string */
+
+    if ((left->kind == TYPE_ENUM && right->kind == TYPE_INT) ||
+        (left->kind == TYPE_INT && right->kind == TYPE_ENUM)) {
+        return type_int;
+    }
+
     if (left->kind == TYPE_STRING || right->kind == TYPE_STRING) {
         if (left->kind != TYPE_STRING || right->kind != TYPE_STRING) {
             sem_fatal("comparison string and non-string (line %d)", line);
         }
         return type_int;
     }
-    /* char: char == char */
+
     if (left->kind == TYPE_CHAR || right->kind == TYPE_CHAR) {
         if (left->kind != TYPE_CHAR || right->kind != TYPE_CHAR) {
             sem_fatal("comparison char and non-char (line %d)", line);
         }
         return type_int;
     }
-    /* numeric: int/float μεταξύ τους, ακόμα κι αν διαφορετικός */
+
     if (is_numeric(left->kind) && is_numeric(right->kind)) {
         return type_int;
     }
-    sem_fatal("incompatible types at line %d", line);
+
+    sem_fatal("incompatible types in equality comparison (line %d)", line);
     return type_error;
 }
 
@@ -761,31 +791,72 @@ void sem_check_undefined_prototypes(void)
 
 
 //ENUMS
-void sem_define_enum_constant(Type *enum_type, const char *name, int value, int line) {
-    if (!enum_type || enum_type->kind != TYPE_ENUM) {
-        sem_fatal("internal: sem_define_enum_constant called with non-enum (line %d)", line);
+void sem_enum_start(const char *name, int line) {
+    Type *t = malloc(sizeof(Type)); 
+    t->kind = TYPE_ENUM;
+    t->enum_name = strdup(name);
+    
+    Symbol *s = symtab_insert(name, SYM_TYPE, t);
+    if (!s) {
+        sem_fatal("Redeclaration of enum type '%s' (line %d)", name, line);
     }
 
-    Symbol *s = symtab_insert(name, SYM_ENUM_CONST, enum_type);
-    if (!s) {
-        sem_fatal("Redeclaration of enum const '%s' (line %d)", name, line);
-    }
-    s->u.enum_const.value = value;
+    current_enum_processing_type = t;
+    current_enum_counter = 0;
 }
 
+void sem_enum_add_const(const char *name, int has_explicit_val, int explicit_val, int line) {
+    if (!current_enum_processing_type) {
+        sem_fatal("Internal: Attempt to add enum constant '%s' outside of enum decl (line %d)", name, line);
+    }
+
+    int value;
+    if (has_explicit_val) {
+        value = explicit_val;
+    } else {
+        value = current_enum_counter;
+    }
+
+    Symbol *s = symtab_insert(name, SYM_ENUM_CONST, current_enum_processing_type);
+    if (!s) {
+        sem_fatal("Redeclaration of enum constant '%s' (line %d)", name, line);
+    }
+    
+    s->u.enum_const.value = value;
+
+    current_enum_counter = value + 1;
+}
+
+/* semantics.c */
 
 Type *sem_use_enum_constant(Type *enum_type, const char *const_name, int line) {
     if (!enum_type || enum_type->kind != TYPE_ENUM) {
-        sem_fatal("internal: sem_use_enum_constant called with non-enum (line %d)", line);
+        sem_fatal("Type '%s' is not an enum (line %d)", 
+                  (enum_type && enum_type->enum_name) ? enum_type->enum_name : "unknown", 
+                  line);
     }
 
-    Symbol *s = symtab_lookup(const_name); // Αναζητούμε απευθείας με το όνομα της σταθεράς
-    if (!s || s->kind != SYM_ENUM_CONST || s->type != enum_type) {
-        sem_fatal("unknown enum constant '%s' (line %d)", const_name, line);
-        return type_error;
+    Symbol *s = symtab_lookup(const_name);
+    
+    if (!s || s->kind != SYM_ENUM_CONST) {
+        sem_fatal("Enum constant '%s' not found (line %d)", const_name, line);
     }
 
-    return s->type;
+    if (s->type != enum_type) {
+        if (s->type->enum_name && enum_type->enum_name && 
+            strcmp(s->type->enum_name, enum_type->enum_name) != 0) {
+            
+            sem_fatal("Constant '%s' belongs to enum '%s', not '%s' (line %d)", 
+                      const_name, s->type->enum_name, enum_type->enum_name, line);
+        }
+    }
+
+    return s->type; 
+}
+
+void sem_enum_end(void) {
+    current_enum_processing_type = NULL;
+    current_enum_counter = 0;
 }
 
 //STATEMENTS

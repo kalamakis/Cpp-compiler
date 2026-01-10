@@ -134,6 +134,8 @@ static const char *kind_to_string(ASTKind k) {
         case AST_INDEX:     return "INDEX";
         case AST_CIN:       return "CIN";
         case AST_COUT:      return "COUT";
+        case AST_ENUM_DECL:  return "ENUM_DECL";
+        case AST_ENUM_CONST: return "ENUM_CONST";
         default:            return "NODE";
     }
 }
@@ -295,6 +297,14 @@ static int ast_print_dot_rec(ASTNode *n, FILE *out) {
             snprintf(extra, sizeof(extra), "stream <<");
             break;
 
+        case AST_ENUM_DECL:
+            snprintf(extra, sizeof(extra), "enum %s", n->u.enum_decl.name);
+            break;
+
+        case AST_ENUM_CONST:
+            snprintf(extra, sizeof(extra), "%s = %d", n->u.enum_const.name, n->u.enum_const.value);
+            break;
+
         default:
             break;
     }
@@ -409,6 +419,10 @@ static int ast_print_dot_rec(ASTNode *n, FILE *out) {
 
         case AST_COUT:
             CHILD("output",   n->u.io_stmt.io_list);
+            break;
+
+        case AST_ENUM_DECL:
+            CHILD("members", n->u.enum_decl.constants);
             break;
 
         default:

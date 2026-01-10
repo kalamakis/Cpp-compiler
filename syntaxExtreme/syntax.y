@@ -137,6 +137,7 @@
     init_variabledefs init_variabledef
     global_var_declaration
     in_list in_item out_list out_item
+    enum_declaration enum_body id_list
  
 
 %left T_COMMA
@@ -456,40 +457,35 @@ list_elements:              list_elements T_COMMA assignment                    
 init_values :               init_values T_COMMA init_value
                             | init_value
                             ;
-enum_declaration :          T_ENUM T_ID                                        {current_enum_builder = start_enum($2); // δική σου συνάρτηση που επιστρέφει builder
-                                                                                    if (!current_enum_builder) {
-                                                                                        YYERROR_FMT("Redeclaration of enum '%s'", $2);
-                                                                                    }
-                                                                                    //Include enum type on global scope
-                                                                                    Symbol *etype = symtab_insert($2, SYM_TYPE, current_enum_builder->enum_type);
-                                                                                    if (!etype) {
-                                                                                        YYERROR_FMT("Redeclaration of enum type '%s'", $2);
-                                                                                    }
+enum_declaration :          T_ENUM T_ID                                         {
+                                                                                    sem_enum_start($2, yylineno);
                                                                                 }
                             enum_body T_SEMI
                                                                                 {
-                                                                                    /* τελειώσαμε με το enum */
-                                                                                    Type *t = end_enum(current_enum_builder); // επιστρέφει Type*
-                                                                                    current_enum_builder = NULL;
-                                                                                    current_enum_type = t; //Hold on to current type for parser
+                                                                                    sem_enum_end();
+                                                                                    $$ = ast_make_enum_decl($2, $4, yylineno);
                                                                                 }
                             ;
-enum_body :                 T_LBRACE id_list T_RBRACE;                           
+enum_body :                 T_LBRACE id_list T_RBRACE                           {$$ = $2;}
+                            ;                           
 id_list :                   id_list T_COMMA T_ID initializer                    {
-                                                                                    int val = ($4 == -1) ? current_enum_builder->next_value : $4;
-                                                                                    if (!add_enum_constant(current_enum_builder, $3, val, $4 != -1)) {
-                                                                                        YYERROR_FMT("Redeclaration of enum constant '%s'", $3);
-                                                                                    }
+                                                                                    int has_val = ($4 != -999); // Χρησιμοποιούμε το -999 ως "no value"
+                                                                                    int val = (has_val) ? $4 : 0;
+                                                                                    sem_enum_add_const($3, has_val, val, yylineno);
+                                                                                    ASTNode *new_const = ast_make_enum_const($3, val, yylineno);
+                                                                                    $$ = ast_list_append($1, new_const, yylineno);
                                                                                 }
                             | T_ID initializer                                  { 
-                                                                                    int val = ($2 == -1) ? current_enum_builder->next_value : $2;
-                                                                                    if (!add_enum_constant(current_enum_builder, $1, val, $2 != -1)) {
-                                                                                        YYERROR_FMT("Redeclaration of enum constant '%s'", $1);
-                                                                                    }
+                                                                                    int has_val = ($2 != -999);
+                                                                                    int val = (has_val) ? $2 : 0;
+                                                                                    sem_enum_add_const($1, has_val, val, yylineno);
+
+                                                                                    ASTNode *new_const = ast_make_enum_const($1, val, yylineno);
+                                                                                    $$ = new_const;
                                                                                 }
                             ;
 initializer :               T_ASSIGN T_ICONST                                   {$$ = $2;} /* explicit integer initializer */
-                            | %empty                                            {$$ = -1;} /*-1 = no initializer*/
+                            | %empty                                            {$$ = -999;} /*-1 = no initializer*/
                             ;
 class_declaration :         T_CLASS T_ID class_body T_SEMI                      {Type *t = make_simple_type(TYPE_CLASS);
                                                                                     if (!symtab_insert($2, SYM_TYPE, t)) {
