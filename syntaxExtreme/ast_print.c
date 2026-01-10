@@ -403,6 +403,14 @@ static int ast_print_dot_rec(ASTNode *n, FILE *out) {
             CHILD("tail",     n->u.list.tail);
             break;
 
+        case AST_CIN:
+            CHILD("input",    n->u.io_stmt.io_list);
+            break;
+
+        case AST_COUT:
+            CHILD("output",   n->u.io_stmt.io_list);
+            break;
+
         default:
             break;
     }

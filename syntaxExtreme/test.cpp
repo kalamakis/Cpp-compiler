@@ -1,12 +1,27 @@
+/* test_io.cpp */
+
 int main() {
-    int i;
+    int x;
+    float y;
+    int arr[5];
 
-    // Σωστό loop
-    for(i=0; i<10; i++) {
-        if (i == 5) break;    // OK
-        if (i == 2) continue; // OK
-    }
+    // 1. Δοκιμή CIN
+    // Ανάγνωση σε απλές μεταβλητές
+    cin >> x >> y;
 
-    // ΛΑΘΟΣ: break έξω από loop
-    // break;
+    // Ανάγνωση σε στοιχείο πίνακα (l-value)
+    cin >> arr[0];
+
+    // 2. Δοκιμή COUT
+    // Εκτύπωση σταθερών (String, Int, Float)
+    cout << "Results: " << 10 << 3.14;
+
+    // Εκτύπωση μεταβλητών
+    cout << x << y;
+
+    // Εκτύπωση αποτελεσμάτων πράξεων (Expressions)
+    cout << (x + 5) * 2;
+    cout << arr[0];
+
+    return 0;
 }
