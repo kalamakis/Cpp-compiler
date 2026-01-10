@@ -1,3 +1,12 @@
+
+
+
 int f(int a, int b) { int x; { int y; } return a; }
 
-int main() { int a; int c; }
+int main() {
+    static int kostas;
+    int a;
+    int c;
+
+    return 0;
+}
