@@ -531,6 +531,7 @@ variabledef :               T_ID dims                                           
                                                                                     } else {
                                                                                         Symbol *s = symtab_insert($1, SYM_VAR, t);
                                                                                         if (!s) YYERROR_FMT("Redeclaration of '%s'", $1);
+                                                                                        if (s) sem_bind_var_symbol(s, yylineno); //for memory (locals only is in function)
                                                                                     }
                                                                                     $$ = ast_make_var_decl($1, t, NULL, yylineno);
                                                                                 }
@@ -550,7 +551,8 @@ method :                    short_func_declaration;
 short_func_declaration     : short_par_func_header T_SEMI                                   {
                                                                                                 symtab_leave_scope();
                                                                                                 sem_declare_function(current_function_name,current_function_type,yylineno);
-                                                                                                
+
+                                                                                                sem_frame_end(current_function_name, yylineno);  //for memory binding tables
                                                                                                 current_function_type = NULL;
                                                                                                 current_function_name  = NULL;
                                                                                                 in_param_context       = 0;
@@ -559,6 +561,7 @@ short_func_declaration     : short_par_func_header T_SEMI                       
                                                                                             {
                                                                                                 symtab_leave_scope();
                                                                                                 sem_declare_function(current_function_name,current_function_type,yylineno);
+                                                                                                sem_frame_end(current_function_name, yylineno);  
                                                                                                 current_function_type = NULL;
                                                                                                 current_function_name  = NULL;
                                                                                                 in_param_context = 0;
@@ -578,6 +581,7 @@ func_header_start :         type_with_list T_ID                                 
                                                                                                 current_function_name  = $2;
                                                                                                 in_param_context       = 1;
                                                                                                 symtab_enter_scope();
+                                                                                                sem_frame_begin($2, yylineno); //for memory tables
                                                                                             }
                             ;
 
@@ -619,12 +623,16 @@ full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRA
                                                                                                             ASTNode *body = $3.node;
                                                                                                             $$.node = ast_make_func_decl(current_function_name, body, yylineno);
 
-                                                                                                            
+                                                                                                            sem_frame_end(current_function_name, yylineno);//for memory binding tables
+
                                                                                                             current_function_type = NULL;
                                                                                                             current_function_name = NULL;
                                                                                                             in_param_context = 0;
                                                                                                         }
-                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { symtab_leave_scope();   in_param_context = 0; current_function_type = NULL; $$.node = $3.node;};
+                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { 
+                                                                                                            symtab_leave_scope();  sem_frame_end(current_function_name, yylineno);  
+                                                                                                            in_param_context = 0; current_function_type = NULL; $$.node = $3.node;
+                                                                                                        }
                             | nopar_func_header T_LBRACE  decl_statements T_RBRACE                      {
                                                                                                             symtab_leave_scope();
                                                                                                             //sem_define_function(current_function_name, current_function_type, yylineno);
@@ -632,7 +640,7 @@ full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRA
                                                                                                             ASTNode *body = $3.node;
                                                                                                             $$.node = ast_make_func_decl(current_function_name, body, yylineno);
 
-                                                                                                            
+                                                                                                            sem_frame_end(current_function_name, yylineno);  
                                                                                                             current_function_type  = NULL;
                                                                                                             current_function_name  = NULL;
                                                                                                             in_param_context       = 0;
@@ -766,8 +774,10 @@ out_item :                  general_expression                                  
                                                                                                 $$ = $1.node;
                                                                                             }
                             ;
-comp_statement :            T_LBRACE {symtab_enter_scope();} decl_statements T_RBRACE    { symtab_leave_scope(); $$.node = $3.node;};
-main_function :             main_header T_LBRACE decl_statements T_RBRACE   { symtab_leave_scope();  
+comp_statement :            T_LBRACE {symtab_enter_scope(); sem_scope_push_offsets();} decl_statements T_RBRACE    { sem_scope_pop_offsets(); symtab_leave_scope(); $$.node = $3.node;};
+main_function :             main_header T_LBRACE decl_statements T_RBRACE   { 
+                                                                                sem_frame_end(current_function_name, yylineno);
+                                                                                symtab_leave_scope();    
                                                                                 current_function_type = NULL; 
                                                                                 ASTNode *body = $3.node;
                                                                                 $$.node = ast_make_func_decl("main", body, yylineno);
@@ -779,6 +789,7 @@ main_header :               T_INT T_MAIN  T_LPAREN T_RPAREN                 {
                                                                                     YYERROR_FMT("Redeclaration of function 'main'");
                                                                                 }
                                                                                 symtab_enter_scope();
+                                                                                sem_frame_begin("main", yylineno);
                                                                             }  
                             | error T_MAIN  T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
                             | T_INT error   T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}

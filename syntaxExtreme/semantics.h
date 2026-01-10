@@ -87,4 +87,15 @@ void sem_enter_loop(void);
 void sem_leave_loop(void);
 void sem_check_break_continue(const char *op_name, int line);
 
+// Frame / offsets (MIPS32)
+void sem_frame_begin(const char *func_name, int line);
+void sem_frame_end(const char *func_name, int line);
+
+void sem_scope_push_offsets(void);
+void sem_scope_pop_offsets(void);
+
+void sem_bind_param_symbol(Symbol *s, int line);
+void sem_bind_var_symbol(Symbol *s, int line);
+
+
 #endif
