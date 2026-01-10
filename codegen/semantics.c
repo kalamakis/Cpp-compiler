@@ -94,6 +94,40 @@ static int is_composite(TypeKind k){
     return (k == TYPE_ARRAY ||k == TYPE_LIST || k == TYPE_CLASS || k == TYPE_UNION);
 }
 
+//class field lookup
+Symbol *sem_lookup_field_symbol(Type *base, const char *field_name, int line)
+{
+    if (!base || base == type_error) {
+        sem_fatal("invalid base in field access '.%s' at line %d", field_name, line);
+    }
+
+    Type *t = base;
+    while (t) {
+        if (t->kind != TYPE_CLASS && t->kind != TYPE_UNION) {
+            sem_fatal("type is not a class/union for field '.%s' at line %d", field_name, line);
+        }
+
+        if (!t->members) {
+            sem_fatal("class/union has no members table for '.%s' at line %d", field_name, line);
+        }
+
+        Symbol *m = (Symbol*)hashtbl_lookup(t->members, field_name, 0);
+        if (m) {
+            if (m->kind != SYM_VAR && m->kind != SYM_CONST) {
+                sem_fatal("member '%s' is not a field at line %d", field_name, line);
+            }
+            return m;
+        }
+
+        /* inheritance only for classes */
+        if (t->kind == TYPE_CLASS) t = t->base_type;
+        else break;
+    }
+
+    sem_fatal("unknown field '%s' at line %d", field_name, line);
+    return NULL;
+}
+
 bool types_compatible_for_assignment(Type *lhs, Type *rhs) {
     if (!lhs || !rhs) return false;
     if (lhs == type_error || rhs == type_error) return false;
@@ -127,38 +161,55 @@ static ASTNode *strip_indexes(ASTNode *n){
     return n;
 }
 
+/* γυρνάει το object root (π.χ. για x.a -> x, για x.a[i] -> x) */
+static Symbol *lvalue_owner_symbol(ASTNode *n){
+    n = strip_indexes(n);
+
+    // αν είναι field, κατέβα στο base
+    while (n && n->kind == AST_FIELD) {
+        n = n->u.field.base;
+        n = strip_indexes(n);
+    }
+
+    if (n && n->kind == AST_VAR) return n->u.var.sym;
+    return NULL;
+}
+
+/* γυρνάει το symbol που ΠΡΑΓΜΑΤΙΚΑ γράφεις (π.χ. x.a -> symbol του a) */
+static Symbol *lvalue_target_symbol(ASTNode *n){
+    n = strip_indexes(n);
+
+    if (n && n->kind == AST_FIELD) return n->u.field.member;
+    if (n && n->kind == AST_VAR)   return n->u.var.sym;
+
+    // array πάνω σε field: x.arr[i] => n είναι INDEX, strip -> FIELD => handled above
+    return NULL;
+}
+
 void sem_check_writable_lvalue(ASTNode *n, int line){
     if (!n) {
         sem_fatal("invalid assigment (line %d)", line);
     }
 
     // lvalue επιτρέπουμε μόνο VAR ή INDEX
-    if (n->kind != AST_VAR && n->kind != AST_INDEX) {
+    if (n->kind != AST_VAR && n->kind != AST_INDEX && n->kind != AST_FIELD) {
         sem_fatal("not compatible lvalue (line %d)", line);
     }
 
-    // βρες το “root” σύμβολο: για a[i][j] -> a
-    ASTNode *root = strip_indexes(n);
-    if (!root || root->kind != AST_VAR) {
-        sem_fatal("left hand side must refer to a variable (line %d)", line);
+    Symbol *target = lvalue_target_symbol(n);
+    if (!target) sem_fatal("internal: lvalue without target symbol (line %d)", line);
+
+    if (target->kind == SYM_CONST || target->kind == SYM_ENUM_CONST) {
+        sem_fatal("cannot modify constant '%s' at line %d", target->name, line);
+    }
+    if (target->kind == SYM_FUNC) {
+        sem_fatal("cannot assign to function '%s' at line %d", target->name, line);
     }
 
-    Symbol *s = root->u.var.sym;
-    if (!s) {
-        sem_fatal("internal: lvalue without symbol (line %d)", line);
-    }
-
-    // απαγόρευση εγγραφής σε const / enum const / function
-    if (s->kind == SYM_CONST || s->kind == SYM_ENUM_CONST) {
-        sem_fatal("cannot modify constant '%s' at line %d", s->name, line);
-    }
-    if (s->kind == SYM_FUNC) {
-        sem_fatal("cannot assign to function '%s' at line %d", s->name, line);
-    }
-
-    //Απαγόρευση ανάθεσης σε όνομα τύπου
-    if (s->kind == SYM_TYPE) {
-        sem_fatal("cannot assign to type name '%s' at line %d", s->name, line);
+    //αν το object είναι const, δεν αλλαζει τπ field του
+    Symbol *owner = lvalue_owner_symbol(n);
+    if (owner && (owner->kind == SYM_CONST || owner->kind == SYM_ENUM_CONST)) {
+        sem_fatal("cannot modify field of constant object '%s' at line %d", owner->name, line);
     }
 }
 
@@ -361,7 +412,85 @@ Type *sem_binary_equality(Type *left, Type *right, int line){
     return type_error;
 }
 
-static long sem_align4(long n) { return (n + 3) & ~3L; }
+static long sem_align4(long n) { 
+    return (n + 3) & ~3L;
+}
+
+static void sem_layout_union(Type *t, int line);
+static void sem_layout_class(Type *t, int line);
+
+static void sem_layout_union(Type *t, int line) {
+    if (!t || t == type_error) return;
+    if (t->kind != TYPE_UNION) return;
+    if (t->size > 0) return;
+
+    if (!t->members) {
+        sem_fatal("union has no members table (line %d)", line);
+        return;
+    }
+
+    long maxSize = 0;
+
+    for (hash_size i = 0; i < t->members->size; i++) {
+        struct hashnode_s *n = t->members->nodes[i];
+        while (n) {
+            Symbol *m = (Symbol*)n->data;
+            if (m && m->kind == SYM_VAR && m->storage == STOR_FIELD) {
+                long s = sem_sizeof_rec(m->type, line);
+                if (s < 0) s = 0;
+                m->offset = 0;
+                if (s > maxSize) maxSize = s;
+            }
+            n = n->next;
+        }
+    }
+
+    t->size = (int)sem_align4(maxSize);
+}
+
+static void sem_layout_class(Type *t, int line) {
+    if (!t || t == type_error) return;
+    if (t->kind != TYPE_CLASS) return;
+    if (t->size > 0) return;
+
+    if (!t->members) {
+        sem_fatal("internal: class has no members table ine %d)", line);
+        return;
+    }
+
+    long off = 0;
+
+    /* base first */
+    if (t->base_type) {
+        if (t->base_type->kind != TYPE_CLASS) {
+            sem_fatal("base not a class (line %d)", line);
+        }
+        if (t->base_type->size <= 0) {
+            sem_layout_class(t->base_type, line);
+        }
+        off = t->base_type->size;
+    }
+
+    //fields
+    for (hash_size i = 0; i < t->members->size; i++) {
+        struct hashnode_s *n = t->members->nodes[i];
+        while (n) {
+            Symbol *m = (Symbol*)n->data;
+            if (m && m->kind == SYM_VAR && m->storage == STOR_FIELD) {
+                long s = sem_sizeof_rec(m->type, line);
+                if (s < 0) s = 0;
+
+                off = sem_align4(off);
+                m->offset = (int)off;
+                off += s;
+            }
+            n = n->next;
+        }
+    }
+
+    t->size = (int)sem_align4(off);
+}
+
 
 static long sem_sizeof_rec(Type *t, int line) {
     if (!t || t == type_error) return 0;
@@ -388,9 +517,11 @@ static long sem_sizeof_rec(Type *t, int line) {
             return 0;
 
         case TYPE_CLASS:
+            sem_layout_class(t, line);
+            return t->size;
         case TYPE_UNION:
-            sem_fatal("sizeof(class/union) not supported yet (line %d)", line);
-            return 0;
+            sem_layout_union(t, line);
+            return t->size;
 
         default:
             return 0;

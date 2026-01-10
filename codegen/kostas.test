@@ -1,3 +1,9 @@
-int f(int a, int b) { int x; { int y; } return a; }
+class C { 
+    public: int a; 
+};
 
-int main() { int a; int c; }
+int main() { 
+    C x; 
+    x.a = 3; 
+    return x.a; 
+}

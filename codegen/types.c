@@ -12,10 +12,8 @@ Type *type_void = NULL;
 Type *type_error = NULL;
 
 Type *make_simple_type(TypeKind kind){
-    Type *t = malloc(sizeof(Type));
+    Type *t = calloc(1, sizeof(Type));
     t->kind = kind;
-    t->elem_type = NULL;
-    t->array_size=NULL;
     return t;
 }
 
@@ -117,5 +115,25 @@ Type *end_enum(EnumBuilder *eb)
 {
     Type *t = eb->enum_type;
     free(eb);
+    return t;
+}
+
+
+Type *make_class_type(const char *name, Type *base_type){
+    Type *t = make_simple_type(TYPE_CLASS);
+    if (!t) return NULL;
+    t->tag_name = name ? strdup(name) : NULL;
+    t->base_type = base_type;
+
+    /* members table: θα γεμίσει στο semantics */
+    t->members = hashtbl_create(211, NULL);
+    return t;
+}
+
+Type *make_union_type(const char *name){
+    Type *t = make_simple_type(TYPE_UNION);
+    if (!t) return NULL;
+    t->tag_name = name ? strdup(name) : NULL;
+    t->members = hashtbl_create(211, NULL);
     return t;
 }

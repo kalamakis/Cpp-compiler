@@ -21,6 +21,12 @@ typedef enum {
     STOR_TEMP
 } StorageClass;
 
+typedef enum {
+    ACC_PUBLIC,
+    ACC_PROTECTED,
+    ACC_PRIVATE
+} AccessKind;
+
 typedef struct Symbol {
     char        *name;
     SymbolKind   kind;
@@ -31,6 +37,7 @@ typedef struct Symbol {
 
     StorageClass storage;
     int          offset;     // θέση στο χώρο δεδομένων / frame
+    AccessKind   access;     // για class members/methods
 
     union {
         struct {             // για σταθερές

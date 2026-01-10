@@ -136,6 +136,7 @@ static const char *kind_to_string(ASTKind k) {
         case AST_COUT:      return "COUT";
         case AST_ENUM_DECL:  return "ENUM_DECL";
         case AST_ENUM_CONST: return "ENUM_CONST";
+        case AST_FIELD:     return "FIELD";
         default:            return "NODE";
     }
 }
@@ -303,6 +304,14 @@ static int ast_print_dot_rec(ASTNode *n, FILE *out) {
 
         case AST_ENUM_CONST:
             snprintf(extra, sizeof(extra), "%s = %d", n->u.enum_const.name, n->u.enum_const.value);
+            break;
+        
+        case AST_FIELD:
+            if (n->u.field.member && n->u.field.member->name) {
+                snprintf(extra, sizeof(extra), ".%s", n->u.field.member->name);
+            } else {
+                snprintf(extra, sizeof(extra), ".<member?>");
+            }
             break;
 
         default:

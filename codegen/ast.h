@@ -33,6 +33,8 @@ typedef enum {
     AST_LIST,
 
     AST_INDEX,   /* array[index] */
+
+    AST_FIELD,
     // ... later: classes, enums, etc.
 } ASTKind;
 
@@ -72,6 +74,7 @@ struct ASTNode {
             struct ASTNode *field;  /* obj.field */
             Symbol         *sym;
         } var;
+        struct { struct ASTNode *base; Symbol *member; } field;     //class field
         struct { char *name; Type *decl_type; struct ASTNode *init; } var_decl;
         struct { 
             long   ival;
@@ -144,5 +147,7 @@ ASTNode *ast_make_cout(ASTNode *exprs, int line);
 
 ASTNode *ast_make_enum_decl(char *name, ASTNode *constants, int line);
 ASTNode *ast_make_enum_const(char *name, int value, int line);
+
+ASTNode *ast_make_field(ASTNode *base, Symbol *member, Type *t, int line);
 
 #endif

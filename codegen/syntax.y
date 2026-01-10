@@ -27,6 +27,22 @@
     static int current_enum_value = 0;
     static EnumBuilder *current_enum_builder = NULL;
 
+    /*class parsing state */
+    static Type *current_class_type = NULL;
+    static int   in_class_body = 0;
+    static AccessKind current_member_access = ACC_PUBLIC;
+    static const char *current_function_unqual = NULL;
+    static int current_function_name_owned = 0;
+
+    //breaks down qualified names like "Class::method"
+    static char *mk_qname(const char *cls, const char *meth) {
+        size_t n = strlen(cls) + 2 + strlen(meth) + 1; /* "::" */
+        char *s = malloc(n);
+        if (!s) return NULL;
+        snprintf(s, n, "%s::%s", cls, meth);
+        return s;
+    }
+
     #define YYERROR_BUFFER_SIZE 256
     #define YYERROR_FMT(...) \
         do { \
@@ -120,7 +136,7 @@
 // %type <strval> full_func_declaration full_par_func_header class_func_header_start func_class parameter_list pass_variabledef nopar_class_func_header
 // %type <strval> decl_statements declarations decltype statements statement expression_statement if_statement if_tail while_statement for_statement optexpr
 // %type <strval> return_statement io_statement in_list in_item out_list out_item comp_statement main_function main_header
-%type <type> typename standard_type list_elements type_with_list dims dim parameter_decl parameter_list
+%type <type> typename standard_type list_elements type_with_list dims dim parameter_decl parameter_list parent
 %type <intval> listspec initializer pass_list_dims
 
 %type <expr> expression general_expression assignment variable constant listexpression expression_list optexpr init_value
@@ -371,11 +387,17 @@ variable
                                                                                 }
                             | variable T_DOT T_ID
                                                                                 {
-                                                                                    if (is_enum($1.type->kind)) {
+                                                                                    if ($1.type && is_enum($1.type->kind)) {
                                                                                         Type *t = sem_use_enum_constant($1.type, $3, yylineno);
                                                                                         $$.type = t;
                                                                                         $$.node = ast_make_var($3, t, yylineno);
-                                                                                    } else {
+                                                                                    }
+                                                                                    else if ($1.type && ($1.type->kind == TYPE_CLASS || $1.type->kind == TYPE_UNION)) {
+                                                                                        Symbol *m = sem_lookup_field_symbol($1.type, $3, yylineno);
+                                                                                        $$.type = m ? m->type : type_error;
+                                                                                        $$.node = m ? ast_make_field($1.node, m, $$.type, yylineno) : NULL;
+                                                                                    }
+                                                                                    else {
                                                                                         $$.type = type_error;
                                                                                         $$.node = NULL;
                                                                                     }
@@ -487,27 +509,46 @@ id_list :                   id_list T_COMMA T_ID initializer                    
 initializer :               T_ASSIGN T_ICONST                                   {$$ = $2;} /* explicit integer initializer */
                             | %empty                                            {$$ = -999;} /*-1 = no initializer*/
                             ;
-class_declaration :         T_CLASS T_ID class_body T_SEMI                      {Type *t = make_simple_type(TYPE_CLASS);
-                                                                                    if (!symtab_insert($2, SYM_TYPE, t)) {
+class_declaration :         T_CLASS T_ID parent
+                                                                                {
+                                                                                    Type *base = ($3 == type_error) ? NULL : $3;
+                                                                                    current_class_type = make_class_type($2, base);
+                                                                                    current_member_access = ACC_PUBLIC;
+                                                                                    in_class_body = 1;
+
+                                                                                    
+                                                                                    if (!symtab_insert($2, SYM_TYPE, current_class_type)) {
                                                                                         YYERROR_FMT("Redeclaration of class '%s'", $2);
                                                                                     }
                                                                                 }
-                            ;
-class_body :                parent                                              {symtab_enter_scope();} 
-                            T_LBRACE members_methods T_RBRACE                   { symtab_leave_scope();}
+                            T_LBRACE members_methods T_RBRACE T_SEMI
+                                                                                {
+                                                                                    in_class_body = 0;
+                                                                                    current_class_type = NULL;
+
+                                                                                    
+                                                                                }
                             ;
 
-parent :                    T_COLON T_ID                                        {Symbol *base = symtab_lookup($2);
-                                                                                    if (!base || base->kind != SYM_TYPE) {
+parent :                    T_COLON T_ID                                        {
+                                                                                    Symbol *base = symtab_lookup($2);
+                                                                                    if (!base || base->kind != SYM_TYPE || !base->type || base->type->kind != TYPE_CLASS) {
                                                                                         YYERROR_FMT("Unknown base class '%s'", $2);
+                                                                                        $$ = type_error;
+                                                                                    } else {
+                                                                                        $$ = base->type;
                                                                                     }
                                                                                 }
-                            | %empty                                            {;}    
+                            | %empty                                            {$$ = NULL;}    
                             ;                           
 members_methods :           members_methods access member_or_method
                             | access member_or_method
                             ;
-access :                    T_PRIVATE T_COLON | T_PROTECTED T_COLON | T_PUBLIC T_COLON | %empty         { };
+access :                    T_PRIVATE T_COLON                                   { current_member_access = ACC_PRIVATE; }
+                            | T_PROTECTED T_COLON                               { current_member_access = ACC_PROTECTED; }
+                            | T_PUBLIC T_COLON                                  { current_member_access = ACC_PUBLIC; }
+                            | %empty                                            { ;}
+                            ;
 member_or_method :          member
                             | method
                             ;
@@ -528,6 +569,21 @@ variabledef :               T_ID dims                                           
                                                                                     if ($2 != NULL) t = attach_array_to_base(current_type, $2);
                                                                                     if (in_param_context) {
                                                                                         sem_declare_param($1, t, 0, yylineno);   /* is_ref = 0*/
+                                                                                    } else if (in_class_body && current_class_type) {
+                                                                                        /* class field */
+                                                                                        if (hashtbl_lookup(current_class_type->members, $1, 0)) {
+                                                                                            YYERROR_FMT("Redeclaration of class member '%s'", $1);
+                                                                                        } else {
+                                                                                            Symbol *m = malloc(sizeof(Symbol));
+                                                                                            memset(m, 0, sizeof(Symbol));
+                                                                                            m->name = strdup($1);
+                                                                                            m->kind = SYM_VAR;
+                                                                                            m->type = t;
+                                                                                            m->storage = STOR_FIELD;
+                                                                                            m->access = current_member_access;
+                                                                                            m->offset = -1;
+                                                                                            hashtbl_insert(current_class_type->members, $1, m, 0);
+                                                                                        }
                                                                                     } else {
                                                                                         Symbol *s = symtab_insert($1, SYM_VAR, t);
                                                                                         if (!s) YYERROR_FMT("Redeclaration of '%s'", $1);
@@ -550,20 +606,43 @@ method :                    short_func_declaration;
 
 short_func_declaration     : short_par_func_header T_SEMI                                   {
                                                                                                 symtab_leave_scope();
-                                                                                                sem_declare_function(current_function_name,current_function_type,yylineno);
+                                                                                                Symbol *fsym = sem_declare_function(current_function_name,current_function_type,yylineno);
 
+                                                                                                /* αν είναι class method prototype, add στο members table */
+                                                                                                if (in_class_body && current_class_type && fsym) {
+                                                                                                    fsym->access = current_member_access;
+                                                                                                    if (hashtbl_lookup(current_class_type->members, current_function_unqual, 0)) {
+                                                                                                        YYERROR_FMT("Redeclaration of method '%s'", current_function_unqual);
+                                                                                                    } else {
+                                                                                                        hashtbl_insert(current_class_type->members, current_function_unqual, fsym, 0);
+                                                                                                    }
+                                                                                                }
                                                                                                 sem_frame_end(current_function_name, yylineno);  //for memory binding tables
                                                                                                 current_function_type = NULL;
+                                                                                                if (current_function_name_owned) { free(current_function_name); }
+                                                                                                current_function_name_owned = 0;
                                                                                                 current_function_name  = NULL;
+                                                                                                current_function_unqual = NULL;
                                                                                                 in_param_context       = 0;
                                                                                             }
                             | nopar_func_header T_SEMI
                                                                                             {
                                                                                                 symtab_leave_scope();
-                                                                                                sem_declare_function(current_function_name,current_function_type,yylineno);
+                                                                                                Symbol *fsym = sem_declare_function(current_function_name,current_function_type,yylineno);
+                                                                                                if (in_class_body && current_class_type && fsym) {
+                                                                                                    fsym->access = current_member_access;
+                                                                                                    if (hashtbl_lookup(current_class_type->members, current_function_unqual, 0)) {
+                                                                                                        YYERROR_FMT("Redeclaration of method '%s'", current_function_unqual);
+                                                                                                    } else {
+                                                                                                        hashtbl_insert(current_class_type->members, current_function_unqual, fsym, 0);
+                                                                                                    }
+                                                                                                }
                                                                                                 sem_frame_end(current_function_name, yylineno);  
                                                                                                 current_function_type = NULL;
+                                                                                                if (current_function_name_owned) { free(current_function_name); }
+                                                                                                current_function_name_owned = 0;
                                                                                                 current_function_name  = NULL;
+                                                                                                current_function_unqual = NULL;
                                                                                                 in_param_context = 0;
                                                                                             }
                             ;
@@ -578,7 +657,17 @@ func_header_start :         type_with_list T_ID                                 
                                                                                                 sem_param_list_reset();
 
                                                                                                 current_function_type  = ret;
-                                                                                                current_function_name  = $2;
+                                                                                                current_function_unqual = $2;
+                                                                                                //class
+                                                                                                if (in_class_body && current_class_type && current_class_type->tag_name) {
+                                                                                                    char *qualif = mk_qname(current_class_type->tag_name, $2);
+                                                                                                    current_function_name = qualif;
+                                                                                                    current_function_name_owned = 1;
+                                                                                                } else {
+                                                                                                    current_function_name  = $2;
+                                                                                                    current_function_name_owned = 0;
+                                                                                                }
+                                                                                                
                                                                                                 in_param_context       = 1;
                                                                                                 symtab_enter_scope();
                                                                                                 sem_frame_begin($2, yylineno); //for memory tables

@@ -1,6 +1,8 @@
-/* types.h */
 #ifndef TYPES_H
 #define TYPES_H
+
+#include "hashtable.h" 
+struct Symbol;
 
 typedef enum {
     TYPE_INT,
@@ -23,6 +25,12 @@ typedef struct Type {
     int array_size;           // μόνο για TYPE_ARRAY, μία διάσταση
     /* Για TYPE_CLASS και TYPE_UNION αργότερα θα μπει λίστα από fields */
     char *enum_name;
+
+    char   *tag_name;         // "C"
+    struct Type *base_type;   // base class ή NULL
+    HASHTBL *members;         // key=name -> (Symbol*) fields/methods
+    int      size;
+    int      align;
 } Type;
 
 typedef struct EnumBuilder {
@@ -53,4 +61,10 @@ Type *make_enum_type(const char *name);
 EnumBuilder *start_enum(const char *name);
 int add_enum_constant(EnumBuilder *eb, const char *name, int value, int has_explicit);
 Type *end_enum(EnumBuilder *eb);
+
+
+//classes
+Type *make_class_type(const char *name, Type *base_type);
+
+Type *make_union_type(const char *name);
 #endif

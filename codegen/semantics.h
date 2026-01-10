@@ -29,6 +29,8 @@ void sem_check_writable_lvalue(ASTNode *n, int line);
 
 Type *sem_check_assignment(Type *left, Type *right, int line);
 
+Symbol *sem_lookup_field_symbol(Type *base, const char *field_name, int line);
+
 //expression
 Type *sem_binary_arith(Type *lhs, Type *rhs, int line);
 Type *sem_binary_relational(Type *lhs, Type *rhs, int line);
@@ -88,6 +90,8 @@ void sem_leave_loop(void);
 void sem_check_break_continue(const char *op_name, int line);
 
 // Frame / offsets (MIPS32)
+static long sem_sizeof_rec(Type *t, int line);
+
 void sem_frame_begin(const char *func_name, int line);
 void sem_frame_end(const char *func_name, int line);
 

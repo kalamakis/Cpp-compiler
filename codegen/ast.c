@@ -266,4 +266,14 @@ ASTNode *ast_make_enum_const(char *name, int value, int line) {
     return n;
 }
 
+//classes
+
+ASTNode *ast_make_field(ASTNode *base, Symbol *member, Type *t, int line)
+{
+    ASTNode *n = ast_new(AST_FIELD, t, line);
+    n->u.field.base = base;
+    n->u.field.member = member;
+    return n;
+}
+
 
