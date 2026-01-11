@@ -1,21 +1,11 @@
 digraph AST {
   node [shape=box, fontname="Courier"];
   edge [fontname="Courier"];
-  n0 [label="PROGRAM\n(line 9)"];
-  n1 [label="FUNC_DECL\nmain\n(line 9)"];
-  n2 [label="LIST\n(line 8)"];
-  n3 [label="ASSIGN\n<int>\n(line 7)"];
-  n4 [label="FIELD\n.a\n<int>\n(line 7)"];
-  n3 -> n4 [label="lhs"];
-  n5 [label="CONST\n3\n<int>\n(line 7)"];
-  n3 -> n5 [label="rhs"];
-  n2 -> n3 [label="head"];
-  n6 [label="LIST\n(line 8)"];
-  n7 [label="RETURN\n(line 8)"];
-  n8 [label="FIELD\n.a\n<int>\n(line 8)"];
-  n7 -> n8 [label="expr"];
-  n6 -> n7 [label="head"];
-  n2 -> n6 [label="tail"];
+  n0 [label="PROGRAM\n(line 13)"];
+  n1 [label="FUNC_DECL\nmain\n(line 13)"];
+  n2 [label="RETURN\n(line 12)"];
+  n3 [label="CONST\n0\n<int>\n(line 12)"];
+  n2 -> n3 [label="expr"];
   n1 -> n2 [label="body"];
   n0 -> n1 [label="main"];
 }

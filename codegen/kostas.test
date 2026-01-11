@@ -1,19 +1,13 @@
-// test.cpp
+class A {
+    public:
+    int f(int);
+};
+
+int A::f(int a) {
+    return a + 1;
+}
+
 int main() {
-    int x;
-    int arr[10];
-    x = 0;
-    // Test Strings & IO
-    cout << "Hello World";
-    
-    // Test Loop & Break
-    while (x < 10) {
-        if (x == 5) {
-            break;
-        }
-        arr[x] = x * 2; // Test Array Access
-        x = x + 1;
-    }
-    
-    return x;
+  A obj;    // αν δεν έχεις ακόμα αντικείμενα/decls, σβήστο
+  return 0;
 }

@@ -31,6 +31,33 @@ Type *sem_check_assignment(Type *left, Type *right, int line);
 
 Symbol *sem_lookup_field_symbol(Type *base, const char *field_name, int line);
 
+//int sem_begin_qualified_method_def(Type *ret_candidate, Type *class_type, const char *class_name, const char *method_unqual_name, int line);
+
+void sem_end_function_def(void);
+
+static char *mk_qname(const char *cls, const char *meth);
+
+/*begin out-of-class method definition (C::f ...).
+ * enters the function scope and starts frame tracking.
+ */
+void sem_begin_qualified_method_def(Type *ret_candidate,
+                                    Type *class_type,
+                                    const char *class_name,
+                                    const char *method_unqual,
+                                    int line,
+                                    Type **p_current_function_type,
+                                    char **p_current_function_name,
+                                    const char **p_current_function_unqual,
+                                    int *p_current_function_name_owned,
+                                    int *p_in_param_context);
+
+/* Common cleanup for function parsing context (frees qualified name if owned). */
+void sem_end_function_context(Type **p_current_function_type,
+                              char **p_current_function_name,
+                              const char **p_current_function_unqual,
+                              int *p_current_function_name_owned,
+                              int *p_in_param_context);
+
 //expression
 Type *sem_binary_arith(Type *lhs, Type *rhs, int line);
 Type *sem_binary_relational(Type *lhs, Type *rhs, int line);

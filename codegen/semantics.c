@@ -7,6 +7,7 @@
 #include "symbol.h"
 #include "symbolTable.h"
 #include "hashtable.h"
+#include "string.h"
 
 #include "semantics.h"
 
@@ -127,6 +128,89 @@ Symbol *sem_lookup_field_symbol(Type *base, const char *field_name, int line)
     sem_fatal("unknown field '%s' at line %d", field_name, line);
     return NULL;
 }
+
+//breaks down qualified names like "Class::method"
+static char *mk_qname(const char *cls, const char *meth) {
+    if (!cls || !meth) return NULL;
+    size_t n = strlen(cls) + 2 + strlen(meth) + 1; /* "::" */
+    char *s = (char*)malloc(n);
+    if (!s) return NULL;
+    snprintf(s, n, "%s::%s", cls, meth);
+    return s;
+}
+
+void sem_begin_qualified_method_def(Type *ret_candidate,
+                                    Type *class_type,
+                                    const char *class_name,
+                                    const char *method_unqual,
+                                    int line,
+                                    Type **p_current_function_type,
+                                    char **p_current_function_name,
+                                    const char **p_current_function_unqual,
+                                    int *p_current_function_name_owned,
+                                    int *p_in_param_context)
+{
+    if (!class_type || class_type == type_error || class_type->kind != TYPE_CLASS) {
+        sem_fatal("line %d: missing/invalid class qualifier for method '%s'",
+                  line, method_unqual ? method_unqual : "<null>");
+    }
+    if (!class_name || !method_unqual) {
+        sem_fatal("line %d: internal missing class/method name", line);
+    }
+
+    Type *ret = sem_check_function_return_type(ret_candidate, line);
+
+    if (!class_type->members || !hashtbl_lookup(class_type->members, method_unqual, 0)) {
+        sem_fatal("line %d: definition of undeclared method '%s::%s'", line, class_name, method_unqual);
+    }
+
+    /* Reset params collection (if you use a temp list) */
+    sem_param_list_reset();
+
+    char *qname = mk_qname(class_name, method_unqual);
+    if (!qname) {
+        sem_fatal("line %d: out of memory building qualified method name", line);
+    }
+
+    /* Fill parser-owned state via pointers */
+    if (p_current_function_type)       *p_current_function_type = ret;
+    if (p_current_function_unqual)     *p_current_function_unqual = method_unqual;
+    if (p_current_function_name)       *p_current_function_name = qname;
+    if (p_current_function_name_owned) *p_current_function_name_owned = 1;
+    if (p_in_param_context)            *p_in_param_context = 1;
+
+    /* Insert qualified function symbol in global (or current) scope */
+    if (!symtab_insert(qname, SYM_FUNC, ret)) {
+        sem_fatal("line %d: redeclaration of method '%s'", line, qname);
+    }
+
+    /* Enter function scope + start frame accounting */
+    symtab_enter_scope();
+    sem_frame_begin(qname, line);
+}
+
+void sem_end_function_context(Type **p_current_function_type,
+                              char **p_current_function_name,
+                              const char **p_current_function_unqual,
+                              int *p_current_function_name_owned,
+                              int *p_in_param_context)
+{
+    /* English comments: Reset function parsing context safely */
+    if (p_in_param_context) *p_in_param_context = 0;
+
+    if (p_current_function_name_owned && *p_current_function_name_owned) {
+        if (p_current_function_name && *p_current_function_name) {
+            free(*p_current_function_name);
+        }
+    }
+
+    if (p_current_function_name_owned) *p_current_function_name_owned = 0;
+    if (p_current_function_type) *p_current_function_type = NULL;
+    if (p_current_function_name) *p_current_function_name = NULL;
+    if (p_current_function_unqual) *p_current_function_unqual = NULL;
+}
+
+
 
 bool types_compatible_for_assignment(Type *lhs, Type *rhs) {
     if (!lhs || !rhs) return false;
@@ -1113,4 +1197,4 @@ void sem_bind_var_symbol(Symbol *s, int line) {
 
     s->storage = STOR_LOCAL;
     s->offset  = (int)(-sem_local_bytes);
-}
+}   
