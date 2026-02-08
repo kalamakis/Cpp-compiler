@@ -153,25 +153,32 @@ void emit(IROp op, IROperand arg1, IROperand arg2, IROperand result) {
     }
 }
 
-void emit_label(int label_id) {
-    // Ένα label "ζωντανεύει" ξανά τον κώδικα
-    is_reachable = 1;
+// Νέα, ενιαία συνάρτηση για labels (αριθμητικά ή ονομαστικά)
+void emit_label_ext(int label_id, char* name) {
+    is_reachable = 1; // Η επαναφορά γίνεται ΠΑΝΤΑ εδώ 
 
     Quad *q = malloc(sizeof(Quad));
     q->op = IR_LABEL;
     q->label_id = label_id;
-    q->arg1 = make_operand_none();
+    
+    if (name) {
+        q->arg1.type = OT_CONST_STR;
+        q->arg1.val.sval = strdup(name);
+    } else {
+        q->arg1 = make_operand_none();
+    }
+    
     q->arg2 = make_operand_none();
     q->result = make_operand_none();
     q->next = NULL;
 
-    if (!quad_head) {
-        quad_head = q;
-        quad_tail = q;
-    } else {
-        quad_tail->next = q;
-        quad_tail = q;
-    }
+    if (!quad_head) { quad_head = q; quad_tail = q; }
+    else { quad_tail->next = q; quad_tail = q; }
+}
+
+// Διατηρούμε την παλιά για συμβατότητα με τα loops/if
+void emit_label(int label_id) {
+    emit_label_ext(label_id, NULL);
 }
 
 void print_operand(IROperand op) {
@@ -300,6 +307,11 @@ void ir_print() {
                     print_operand(curr->arg2);   
                     break;
 
+                case IR_LOAD_ADDR:
+                    printf("&"); // Σύμβολο διεύθυνσης
+                    print_operand(curr->arg1);
+                    break;
+
                 default: printf(" (unknown op) ");
             }
             printf("\n");
@@ -343,6 +355,13 @@ int gen_args(ASTNode *node) {
 
     // Αν είναι expression (φύλλο του δέντρου λίστας)
     IROperand op = codegen(node);
+    if (node->type && node->type->kind == TYPE_ARRAY) {
+        int t_addr = new_temp();
+        IROperand addr_op = make_operand_temp(t_addr);
+        emit(IR_LOAD_ADDR, op, make_operand_none(), addr_op);
+        op = addr_op; // Στέλνουμε τη διεύθυνση ως παράμετρο
+    }
+
     emit(IR_PARAM, op, make_operand_none(), make_operand_none());
     return 1;
 }
@@ -382,8 +401,15 @@ IROperand codegen(ASTNode *node) {
 
         // --- 2. Μεταβλητές ---
         case AST_VAR: {
-            // Επιστρέφουμε απευθείας το σύμβολο ως Operand
-            return make_operand_var(node->u.var.sym);
+            Symbol *s = node->u.var.sym;
+            
+            // Αν το σύμβολο είναι σταθερά Enum, επέστρεψε την τιμή του ως Integer Literal
+            if (s->kind == SYM_ENUM_CONST) {
+                return make_operand_int(s->u.enum_const.value);
+            }
+
+            // Διαφορετικά, επέστρεψε την κανονική μεταβλητή
+            return make_operand_var(s);
         }
 
         // --- 3. Binary Operations ---
@@ -674,24 +700,15 @@ IROperand codegen(ASTNode *node) {
 
         // --- 9. Function Declaration ---
         case AST_FUNC_DECL: {
-            // Χρειαζόμαστε ένα ειδικό Quad για αρχή συνάρτησης
-            // Ας χρησιμοποιήσουμε το OP_LABEL αλλά με όνομα συμβόλου αντί για ID
-            Quad *q = malloc(sizeof(Quad));
-            q->op = IR_LABEL; 
-            q->label_id = -1; // -1 σημαίνει "χρήση ονόματος"
-            // Αποθηκεύουμε το όνομα στο arg1 ως string (λίγο hacky αλλά δουλεύει)
-            q->arg1.type = OT_CONST_STR; 
-            q->arg1.val.sval = strdup(node->u.func_decl.name);
-            q->next = NULL;
-            
-            // Σύνδεση στη λίστα
-            if (!quad_head) { quad_head = q; quad_tail = q; }
-            else { quad_tail->next = q; quad_tail = q; }
+            // Καλούμε την επεκταμένη emit_label για το όνομα της συνάρτησης
+            emit_label_ext(-1, node->u.func_decl.name);
 
+            // Παραγωγή κώδικα για το σώμα
             codegen(node->u.func_decl.body);
             
-            // Emit explicit return at the end (just in case)
+            // Το is_reachable θα γίνει 0 εδώ αν το σώμα έχει return
             emit(IR_RETURN, make_operand_none(), make_operand_none(), make_operand_none());
+            
             return make_operand_none();
         }
 
@@ -821,13 +838,34 @@ IROperand codegen(ASTNode *node) {
             }
             return make_operand_none();
         }
+        
+        case AST_ENUM_DECL: {
+            // Οι δηλώσεις enum δεν παράγουν κώδικα μηχανής.
+            // Οι σταθερές έχουν ήδη μπει στο Symbol Table.
+            return make_operand_none();
+        }
+
+        case AST_PROGRAM: {
+            // 1. Καθολικές δηλώσεις (συναρτήσεις όπως η inc)
+            if (node->u.program.globals) {
+                codegen(node->u.program.globals);
+            }
+            // 2. Η κύρια συνάρτηση
+            if (node->u.program.main_func) {
+                codegen(node->u.program.main_func);
+            }
+            return make_operand_none();
+        }
 
         default:
-            // Αν είναι κάτι που δεν υποστηρίζουμε ή PROGRAM/GLOBALS
-            // Απλά προχωράμε στα παιδιά αν υπάρχουν ή επιστρέφουμε.
+            
             if(node->kind == AST_PROGRAM) {
+                // 1. Πρώτα παρήγαγε κώδικα για όλες τις καθολικές δηλώσεις (συναρτήσεις κλπ)
+                if (node->u.program.globals) {
+                    codegen(node->u.program.globals);
+                }
+                // 2. Μετά παρήγαγε τον κώδικα της main
                 codegen(node->u.program.main_func);
-                // codegen(node->u.program.globals); // Αν έχει αρχικοποιήσεις
             }
             break;
     }

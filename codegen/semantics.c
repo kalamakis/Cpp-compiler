@@ -191,6 +191,22 @@ Type *sem_check_assignment(Type *left, Type *right, int line){
         }
         return left;
     }
+    // arrays
+    if (left->kind == TYPE_ARRAY || right->kind == TYPE_ARRAY) {
+        if (left->kind != TYPE_ARRAY || right->kind != TYPE_ARRAY) {
+            sem_fatal("cannot assign non-array to array or vice versa (line %d)", line);
+        }
+        
+        // Αναδρομικός έλεγχος των στοιχείων (π.χ. int == int)
+        sem_check_assignment(left->elem_type, right->elem_type, line);
+
+        // Έλεγχος μεγέθους: Το 0 (open array []) είναι συμβατό με οποιοδήποτε μέγεθος
+        // Το πεδίο array_size ορίζεται στο types.c (0 -> open array)
+        if (left->array_size != 0 && right->array_size != 0 && left->array_size != right->array_size) {
+            sem_fatal("incompatible array sizes in assignment (line %d)", line);
+        }
+        return left;
+    }
 
     if (!is_basic(left->kind) || !is_basic(right->kind)) {
         sem_fatal("assignment between unsupported types at line %d", line);
