@@ -361,11 +361,11 @@ int gen_args(ASTNode *node) {
 
     // Αν είναι expression (φύλλο του δέντρου λίστας)
     IROperand op = codegen(node);
-    if (node->type && node->type->kind == TYPE_ARRAY) {
+    if (node->type && (node->type->kind == TYPE_ARRAY || node->type->kind == TYPE_CLASS)) {
         int t_addr = new_temp();
         IROperand addr_op = make_operand_temp(t_addr);
         emit(IR_LOAD_ADDR, op, make_operand_none(), addr_op);
-        op = addr_op; // Στέλνουμε τη διεύθυνση ως παράμετρο
+        op = addr_op;
     }
 
     emit(IR_PARAM, op, make_operand_none(), make_operand_none());
@@ -535,16 +535,20 @@ IROperand codegen(ASTNode *node) {
             }
 
             if (lhs->kind == AST_FIELD) {
-                // 1. Διεύθυνση βάσης αντικειμένου
-                IROperand base_val = codegen(lhs->u.field.base);
-                int t_addr = new_temp();
-                IROperand base_addr = make_operand_temp(t_addr);
-                emit(IR_LOAD_ADDR, base_val, make_operand_none(), base_addr);
+                ASTNode *base_node = lhs->u.field.base;
+                IROperand base_addr;
 
-                // 2. Offset μέλους
+                // ΕΛΕΓΧΟΣ: Αν η βάση είναι το 'this', είναι ήδη διεύθυνση
+                if (base_node->kind == AST_VAR && strcmp(base_node->u.var.name, "this") == 0) {
+                    base_addr = codegen(base_node);
+                } else {
+                    IROperand base_val = codegen(base_node);
+                    int t_addr = new_temp();
+                    base_addr = make_operand_temp(t_addr);
+                    emit(IR_LOAD_ADDR, base_val, make_operand_none(), base_addr);
+                }
+
                 int offset = lhs->u.field.member->offset;
-
-                // 3. Emit SET_FIELD: base_addr[offset] = rhs_val
                 emit(IR_SET_FIELD, base_addr, make_operand_int(offset), rhs_val);
                 return rhs_val;
             }
@@ -571,7 +575,7 @@ IROperand codegen(ASTNode *node) {
                     long step_size = sem_sizeof_bytes(curr->type, 0);
                     
                     int t_mul = new_temp();
-                    emit(OP_MUL, idx_op, make_operand_int((int)step_size), make_operand_temp(t_mul));
+                    emit(IR_MUL, idx_op, make_operand_int((int)step_size), make_operand_temp(t_mul));
 
                     int t_add = new_temp();
                     emit(IR_ADD, total_offset, make_operand_temp(t_mul), make_operand_temp(t_add));
@@ -743,29 +747,72 @@ IROperand codegen(ASTNode *node) {
             return make_operand_none();
         }
         
-        // --- 11. Function Call ---
+        // --- 11. Function / Method Call ---
         case AST_CALL: {
             ASTNode *func_node = node->u.call.func;
             ASTNode *args_node = node->u.call.args;
+            int arg_count = 0;
+            char *func_name = NULL;
 
-            int arg_count = gen_args(args_node);
+            // ΕΛΕΓΧΟΣ: Είναι μέθοδος (obj.method(...)) ή απλή συνάρτηση (func(...));
+            // Αν το func_node είναι AST_FIELD, τότε έχουμε κλήση μεθόδου!
+            if (func_node->kind == AST_FIELD) {
+                // 1. Παραγωγή κώδικα για το αντικείμενο (το "this")
+                ASTNode *base_obj = func_node->u.field.base;
+                IROperand this_addr;
 
-            // 2. Ετοιμασία αποτελέσματος
+                // ΕΛΕΓΧΟΣ: Αν η βάση είναι το 'this', το περνάμε απευθείας. 
+                // Αλλιώς, παίρνουμε τη διεύθυνση του αντικειμένου (&obj).
+                if (base_obj->kind == AST_VAR && strcmp(base_obj->u.var.name, "this") == 0) {
+                    this_addr = codegen(base_obj);
+                } else {
+                    IROperand base_val = codegen(base_obj);
+                    int t_this = new_temp();
+                    this_addr = make_operand_temp(t_this);
+                    emit(IR_LOAD_ADDR, base_val, make_operand_none(), this_addr);
+                }
+
+                // 2. Περνάμε τη διεύθυνση του αντικειμένου ως την ΠΡΩΤΗ παράμετρο
+                emit(IR_PARAM, this_addr, make_operand_none(), make_operand_none());
+                arg_count++; 
+
+                // 3. Name Mangling: Σύνθεση ονόματος Class_Method
+                Symbol *method_sym = func_node->u.field.member;
+                Type *cls_type = base_obj->type; 
+                char buffer[128];
+                if (cls_type && cls_type->enum_name) {
+                     sprintf(buffer, "%s_%s", cls_type->enum_name, method_sym->name);
+                } else {
+                     sprintf(buffer, "_%s", method_sym->name);
+                }
+                func_name = strdup(buffer);
+            }
+            else {
+                // Απλή συνάρτηση
+                if (func_node->kind == AST_VAR) {
+                    func_name = func_node->u.var.sym->name;
+                } else {
+                    // Function pointer logic (skip for now)
+                    func_name = "unknown_func";
+                }
+            }
+
+            // 4. Παραγωγή υπόλοιπων ορισμάτων
+            arg_count += gen_args(args_node);
+
+            // 5. Ετοιμασία αποτελέσματος
             int t = new_temp();
             IROperand result = make_operand_temp(t);
 
-            // 3. Όνομα συνάρτησης
-            // Υποθέτουμε ότι το func_node είναι AST_VAR
+            // 6. Emit CALL
+            // Πρέπει να φτιάξουμε Operand για το όνομα (Label)
             IROperand func_op;
-            if (func_node->kind == AST_VAR) {
-                func_op = make_operand_var(func_node->u.var.sym);
-            } else {
-                // Περίπτωση function pointer ή κάτι πιο σύνθετο (σπάνιο για αρχή)
-                func_op = codegen(func_node);
-            }
+            func_op.type = OT_VAR; // Χρησιμοποιούμε OT_VAR ή OT_LABEL για το όνομα
+            // Φτιάχνουμε ένα προσωρινό σύμβολο για να κρατήσει το όνομα (λίγο hacky αλλά δουλεύει στο print)
+            Symbol *sym = malloc(sizeof(Symbol));
+            sym->name = func_name;
+            func_op.val.sym = sym;
 
-            // 4. Emit CALL
-            // result = CALL func_name, arg_count
             emit(IR_CALL, func_op, make_operand_int(arg_count), result);
 
             return result;
@@ -879,35 +926,29 @@ IROperand codegen(ASTNode *node) {
         }
 
         case AST_FIELD: {
-            // 1. Πάρε τη διεύθυνση του αντικειμένου-βάσης
-            IROperand base_val = codegen(node->u.field.base);
-            int t_addr = new_temp();
-            IROperand base_addr = make_operand_temp(t_addr);
-            
-            // Αν η βάση είναι μεταβλητή (όχι δείκτης), παίρνουμε τη διεύθυνσή της
-            emit(IR_LOAD_ADDR, base_val, make_operand_none(), base_addr);
+            ASTNode *base_node = node->u.field.base;
+            IROperand base_addr;
 
-            // 2. Πάρε το offset του μέλους από το Symbol (υπολογισμένο στο semantics.c)
+            // ΕΛΕΓΧΟΣ: Αν η βάση είναι το 'this', χρησιμοποιούμε την τιμή του απευθείας
+            if (base_node->kind == AST_VAR && strcmp(base_node->u.var.name, "this") == 0) {
+                base_addr = codegen(base_node); 
+            } else {
+                // Για κανονικά αντικείμενα, παίρνουμε τη διεύθυνσή τους
+                IROperand base_val = codegen(base_node);
+                int t_addr = new_temp();
+                base_addr = make_operand_temp(t_addr);
+                emit(IR_LOAD_ADDR, base_val, make_operand_none(), base_addr);
+            }
+
             int offset = node->u.field.member->offset;
-            
-            // 3. Παραγωγή εντολής ανάγνωσης
             int t_res = new_temp();
             IROperand result = make_operand_temp(t_res);
-            emit(IR_GET_FIELD, base_addr, make_operand_int(offset), result);
             
+            emit(IR_GET_FIELD, base_addr, make_operand_int(offset), result);
             return result;
         }
 
         default:
-            
-            if(node->kind == AST_PROGRAM) {
-                // 1. Πρώτα παρήγαγε κώδικα για όλες τις καθολικές δηλώσεις (συναρτήσεις κλπ)
-                if (node->u.program.globals) {
-                    codegen(node->u.program.globals);
-                }
-                // 2. Μετά παρήγαγε τον κώδικα της main
-                codegen(node->u.program.main_func);
-            }
             break;
     }
 
