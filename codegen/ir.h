@@ -48,7 +48,9 @@ typedef enum {
     IR_READ,     // cin >> x
     IR_CVT_I2F,  // Convert Int to Float (μετατροπή σε πραγματικό)
     IR_CVT_F2I,  // Convert Float to Int (μετατροπή σε ακέραιο)
-    IR_LOAD_ADDR  // result = &arg1 (διεύθυνση μνήμης)
+    IR_LOAD_ADDR,  // result = &arg1 (διεύθυνση μνήμης)
+    IR_GET_FIELD, // result = base_addr + offset (ανάγνωση πεδίου)
+    IR_SET_FIELD // base_addr + offset = value (ανάθεση σε πεδίο)
 } IROp;
 
 typedef enum {
