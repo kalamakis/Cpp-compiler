@@ -22,10 +22,13 @@
     void yyerror(const char *s);
     int yyerrorno = 0;
 
+    //functions
     static Type *current_type = NULL;
     static Type *current_function_type = NULL;
     static char *current_function_name = NULL;
     static int in_param_context = 0;
+
+    //enum
     static Type *current_enum_type = NULL;
     static int current_enum_value = 0;
     static EnumBuilder *current_enum_builder = NULL;
@@ -36,15 +39,9 @@
     static AccessKind current_member_access = ACC_PUBLIC;
     static const char *current_function_unqual = NULL;
     static int current_function_name_owned = 0;
+    static Type       *current_method_class_type = NULL;
+    static const char *current_method_class_name = NULL;
 
-    //breaks down qualified names like "Class::method"
-    static char *mk_qname(const char *cls, const char *meth) {
-        size_t n = strlen(cls) + 2 + strlen(meth) + 1; /* "::" */
-        char *s = malloc(n);
-        if (!s) return NULL;
-        snprintf(s, n, "%s::%s", cls, meth);
-        return s;
-    }
 
     #define YYERROR_BUFFER_SIZE 256
     #define YYERROR_FMT(...) \
@@ -53,6 +50,16 @@
             snprintf(_yyerrbuf, sizeof(_yyerrbuf), __VA_ARGS__); \
             yyerror(_yyerrbuf); \
         } while (0)
+
+    //breaks down qualified names like "Class::method"
+    static char *mk_qname(const char *cls, const char *meth) {
+        if (!cls || !meth) return NULL;
+        size_t n = strlen(cls) + 2 + strlen(meth) + 1; /* "::" */
+        char *s = (char*)malloc(n);
+        if (!s) return NULL;
+        snprintf(s, n, "%s::%s", cls, meth);
+        return s;
+    }
 %}
 
 %define parse.error verbose
@@ -348,9 +355,19 @@ expression
                                                                                 }
                             | variable T_LPAREN expression_list T_RPAREN
                                                                                 {
-                                                                                    Type *t = sem_call_check($1.node, $3.node, yylineno);
-                                                                                    $$.type = t;
-                                                                                    $$.node = ast_make_call($1.node, $3.node, t, yylineno);
+                                                                                    Type *t = NULL;
+                                                                                    ASTNode *call = NULL;
+                                                                                    
+                                                                                    //if methode rewrite the function call to method call (Class::method(obj, args))
+                                                                                    if (sem_try_rewrite_method_call($1.node, $3.node, yylineno, &t, &call)) {
+                                                                                        $$.type = t;
+                                                                                        $$.node = call;
+                                                                                    } else {
+                                                                                        //noraml function
+                                                                                        t = sem_call_check($1.node, $3.node, yylineno);
+                                                                                        $$.type = t;
+                                                                                        $$.node = ast_make_call($1.node, $3.node, t, yylineno);
+                                                                                    }
                                                                                 }
                             | T_LENGTH T_LPAREN general_expression T_RPAREN
                                                                                 {
@@ -419,8 +436,15 @@ variable
                                                                                 }
                             | T_THIS
                                                                                 {
-                                                                                    $$.type = type_error;  /* placeholder */
-                                                                                    $$.node = NULL;
+                                                                                    Symbol *s = symtab_lookup("this");
+                                                                                    if (!s) {
+                                                                                        YYERROR_FMT("line %d: 'this' used outside of method", yylineno);
+                                                                                        $$.type = type_error;
+                                                                                        $$.node = NULL;
+                                                                                    } else {
+                                                                                        $$.type = s->type;
+                                                                                        $$.node = ast_make_var("this", s->type, yylineno);
+                                                                                    }
                                                                                 }
                             ;
 general_expression
@@ -674,6 +698,9 @@ func_header_start :         type_with_list T_ID                                 
                                                                                                 in_param_context       = 1;
                                                                                                 symtab_enter_scope();
                                                                                                 sem_frame_begin($2, yylineno); //for memory tables
+                                                                                                if(in_class_body && current_class_type && current_class_type->tag_name){
+                                                                                                    sem_declare_param("this", current_class_type, 1, yylineno);
+                                                                                                }
                                                                                             }
                             ;
 
@@ -741,17 +768,20 @@ full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRA
 full_par_func_header :      class_func_header_start T_LPAREN parameter_list T_RPAREN                    {sem_define_function(current_function_name, current_function_type, yylineno); in_param_context = 0;}
                             | func_header_start T_LPAREN parameter_list T_RPAREN                        {sem_define_function(current_function_name, current_function_type, yylineno); in_param_context = 0;}    
                             ;
-class_func_header_start :   type_with_list func_class T_ID                      {Type *ret = $1;
-                                                                                    if (!symtab_insert($3, SYM_FUNC, ret)) {
-                                                                                        YYERROR_FMT("Redeclaration of method '%s'", $3);
-                                                                                    }
-                                                                                    current_function_type = ret;
-                                                                                    symtab_enter_scope();
-                                                                                }
+class_func_header_start :   type_with_list func_class T_ID                                              {
+                                                                                                            sem_begin_qualified_method_def($1, current_method_class_type,
+                                                                                                                current_method_class_name, $3, yylineno, &current_function_type,
+                                                                                                                &current_function_name, &current_function_unqual, &current_function_name_owned,
+                                                                                                                &in_param_context);
+                                                                                                        }
                             ;
 func_class :                T_ID T_METH                                         {Symbol *cls = symtab_lookup($1);
                                                                                     if (!cls || cls->kind != SYM_TYPE) {
                                                                                         YYERROR_FMT("Unknown class type '%s'", $1);
+                                                                                    }
+                                                                                    else {
+                                                                                        current_method_class_type = cls->type;
+                                                                                        current_method_class_name = cls->name; 
                                                                                     }
                                                                                 }
                             ;
@@ -913,14 +943,9 @@ int main(int argc, char *argv[]){
        ast_print(ast_root, "ast.dot");
     }
 
-    printf("\nGenerating Intermediate Code...\n");
-        
-    // 1. Κάλεσε το Codegen
     codegen(ast_root);
     
-    // 2. Τύπωσε το αποτέλεσμα
     ir_print();
-    //}
 
     fclose(yyin);
 

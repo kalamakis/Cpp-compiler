@@ -1,7 +1,10 @@
-enum Days { MON, TUE, WED };
+class A { 
+    public: 
+        int x;
+        int set(int); 
+        int get(); 
+};
 
-int main() {
-    int d;
-    d = Days.TUE; // Πρέπει να παράγει: d = 1
-    return d;
-}
+int A::set(int v){ this.x = v; return 0; }
+int A::get(){ return this.x; }
+int main(){ A a; a.set(7); return a.get(); }
