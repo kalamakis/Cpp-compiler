@@ -223,6 +223,7 @@ void ir_print() {
             
             int is_assignment = (curr->result.type != OT_NONE) && 
                                 (curr->op != IR_SET_INDEX) && 
+                                (curr->op != IR_SET_FIELD) &&
                                 (curr->op != IR_IF_FALSE) &&
                                 (curr->op != IR_GOTO) &&
                                 (curr->op != IR_READ) &&
@@ -311,6 +312,11 @@ void ir_print() {
                     printf("&"); // Σύμβολο διεύθυνσης
                     print_operand(curr->arg1);
                     break;
+
+                case IR_GET_FIELD: 
+                    print_operand(curr->arg1); printf(".(+%d)", curr->arg2.val.ival); break;
+                case IR_SET_FIELD: 
+                    print_operand(curr->arg1); printf(".(+%d) = ", curr->arg2.val.ival); print_operand(curr->result); break;
 
                 default: printf(" (unknown op) ");
             }
@@ -526,6 +532,21 @@ IROperand codegen(ASTNode *node) {
                 IROperand cast_res = make_operand_temp(t_new);
                 emit(IR_CVT_F2I, rhs_val, make_operand_none(), cast_res);
                 rhs_val = cast_res;
+            }
+
+            if (lhs->kind == AST_FIELD) {
+                // 1. Διεύθυνση βάσης αντικειμένου
+                IROperand base_val = codegen(lhs->u.field.base);
+                int t_addr = new_temp();
+                IROperand base_addr = make_operand_temp(t_addr);
+                emit(IR_LOAD_ADDR, base_val, make_operand_none(), base_addr);
+
+                // 2. Offset μέλους
+                int offset = lhs->u.field.member->offset;
+
+                // 3. Emit SET_FIELD: base_addr[offset] = rhs_val
+                emit(IR_SET_FIELD, base_addr, make_operand_int(offset), rhs_val);
+                return rhs_val;
             }
 
             if (lhs->kind == AST_VAR) {
@@ -855,6 +876,26 @@ IROperand codegen(ASTNode *node) {
                 codegen(node->u.program.main_func);
             }
             return make_operand_none();
+        }
+
+        case AST_FIELD: {
+            // 1. Πάρε τη διεύθυνση του αντικειμένου-βάσης
+            IROperand base_val = codegen(node->u.field.base);
+            int t_addr = new_temp();
+            IROperand base_addr = make_operand_temp(t_addr);
+            
+            // Αν η βάση είναι μεταβλητή (όχι δείκτης), παίρνουμε τη διεύθυνσή της
+            emit(IR_LOAD_ADDR, base_val, make_operand_none(), base_addr);
+
+            // 2. Πάρε το offset του μέλους από το Symbol (υπολογισμένο στο semantics.c)
+            int offset = node->u.field.member->offset;
+            
+            // 3. Παραγωγή εντολής ανάγνωσης
+            int t_res = new_temp();
+            IROperand result = make_operand_temp(t_res);
+            emit(IR_GET_FIELD, base_addr, make_operand_int(offset), result);
+            
+            return result;
         }
 
         default:

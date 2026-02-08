@@ -1,7 +1,23 @@
-enum Days { MON, TUE, WED };
+class Point {
+    int x;
+    int y;
+};
+
+class ColorPoint : Point {
+    int color;
+};
 
 int main() {
-    int d;
-    d = Days.TUE; // Πρέπει να παράγει: d = 1
-    return d;
+    ColorPoint cp;
+    int result;
+
+    // Πρόσβαση σε κληρονομημένα πεδία
+    cp.x = 10;
+    cp.y = 20;
+
+    // Πρόσβαση σε πεδίο της παράγωγης κλάσης
+    cp.color = 100;
+
+    result = cp.x + cp.y + cp.color;
+    return result;
 }

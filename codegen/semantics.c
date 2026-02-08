@@ -232,15 +232,24 @@ Type *sem_check_assignment(Type *left, Type *right, int line){
 
     //enums
     if (left->kind == TYPE_ENUM || right->kind == TYPE_ENUM) {
-        if (left->kind != TYPE_ENUM || right->kind != TYPE_ENUM) {
-            sem_fatal("assignment between enum and non-enum at line %d", line);
+        // 1. Επιτρέπουμε ελεύθερα την ανάθεση μεταξύ Enum και Int (και αντίστροφα)
+        if ((left->kind == TYPE_ENUM && right->kind == TYPE_INT) ||
+            (left->kind == TYPE_INT && right->kind == TYPE_ENUM)) {
+            return left;
         }
-        const char *ln = left->enum_name;
-        const char *rn = right->enum_name;
-        if (!ln || !rn || strcmp(ln, rn) != 0) {
-            sem_fatal("assignment between different enum types at line %d", line);
+
+        // 2. Αν και τα δύο είναι Enums, πρέπει να είναι του ίδιου τύπου (ίδιο όνομα)
+        if (left->kind == TYPE_ENUM && right->kind == TYPE_ENUM) {
+            const char *ln = left->enum_name;
+            const char *rn = right->enum_name;
+            if (ln && rn && strcmp(ln, rn) != 0) {
+                sem_fatal("assignment between different enum types '%s' and '%s' (line %d)", ln, rn, line);
+            }
+            return left;
         }
-        return left;
+
+        // 3. Οτιδήποτε άλλο (π.χ. enum = float) παραμένει σφάλμα
+        sem_fatal("assignment between enum and non-compatible type at line %d", line);
     }
     // arrays
     if (left->kind == TYPE_ARRAY || right->kind == TYPE_ARRAY) {
@@ -303,9 +312,13 @@ Type *sem_binary_arith(Type *left, Type *right, int line){
            έλεγξε ότι elem_type(left) συμβατό με elem_type(right). */
         return left; /* ή right, είναι ίδιος τύπος λίστας */
     }
-    if (!is_numeric(left->kind) || !is_numeric(right->kind)) {
+    int left_is_ok = is_numeric(left->kind) || left->kind == TYPE_ENUM;
+    int right_is_ok = is_numeric(right->kind) || right->kind == TYPE_ENUM;
+
+    if (!left_is_ok || !right_is_ok) {
         sem_fatal("non-numeric operands in arithmetic expression at line %d", line);
     }
+    
     //αποτέλεσμα int ή float,
     if (left->kind == TYPE_FLOAT || right->kind == TYPE_FLOAT)
         return type_float;
@@ -619,10 +632,10 @@ Type *sem_index(Type *arrayType, Type *indexType, int line) {
         sem_fatal("attempt to index non-array type at line %d", line);
     }
     if (!indexType || indexType == type_error) return type_error;
-    if (indexType->kind != TYPE_INT) {
-        sem_fatal("array index must be of type int at line %d", line);
+    
+    if (indexType->kind != TYPE_INT && indexType->kind != TYPE_ENUM) {
+        sem_fatal("array index must be of type int or enum at line %d", line);
     }
-    /* επιστρέφουμε το στοιχειακό τύπο (μπορεί να είναι άλλο array για multi-dim) */
     return arrayType->elem_type;
 }
 
