@@ -45,7 +45,10 @@ typedef enum {
     IR_NEG,     // x = -y
     /* I/O Operations */
     IR_PRINT,   // cout << x
-    IR_READ     // cin >> x
+    IR_READ,     // cin >> x
+    IR_CVT_I2F,  // Convert Int to Float (μετατροπή σε πραγματικό)
+    IR_CVT_F2I,  // Convert Float to Int (μετατροπή σε ακέραιο)
+    IR_LOAD_ADDR  // result = &arg1 (διεύθυνση μνήμης)
 } IROp;
 
 typedef enum {

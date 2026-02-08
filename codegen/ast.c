@@ -276,4 +276,10 @@ ASTNode *ast_make_field(ASTNode *base, Symbol *member, Type *t, int line)
     return n;
 }
 
+ASTNode *ast_make_break(int line) {
+    return ast_new(AST_BREAK, NULL, line);
+}
 
+ASTNode *ast_make_continue(int line) {
+    return ast_new(AST_CONTINUE, NULL, line);
+}

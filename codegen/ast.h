@@ -152,4 +152,6 @@ ASTNode *ast_make_enum_const(char *name, int value, int line);
 
 ASTNode *ast_make_field(ASTNode *base, Symbol *member, Type *t, int line);
 
+ASTNode *ast_make_break(int line);
+ASTNode *ast_make_continue(int line);
 #endif
