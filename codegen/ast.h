@@ -147,4 +147,6 @@ ASTNode *ast_make_cout(ASTNode *exprs, int line);
 ASTNode *ast_make_enum_decl(char *name, ASTNode *constants, int line);
 ASTNode *ast_make_enum_const(char *name, int value, int line);
 
+ASTNode *ast_make_break(int line);
+ASTNode *ast_make_continue(int line);
 #endif

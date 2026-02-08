@@ -710,11 +710,11 @@ statement :                 expression_statement                                
                             | comp_statement                                                 { $$ = $1; }
                             | T_CONTINUE T_SEMI                                              {
                                                                                                 sem_check_break_continue("continue", yylineno);
-                                                                                                $$.node = NULL;
+                                                                                                $$.node = ast_make_continue(yylineno); 
                                                                                              }
                             | T_BREAK T_SEMI                                                 {
                                                                                                 sem_check_break_continue("break", yylineno);
-                                                                                                $$.node = NULL;
+                                                                                                $$.node = ast_make_break(yylineno); 
                                                                                              }
                             | T_SEMI                                                         {$$.node = NULL;}
                             ;
@@ -820,9 +820,9 @@ int main(int argc, char *argv[]){
     sem_check_undefined_prototypes();
 
     extern ASTNode *ast_root;
-    //if (ast_root) {
-    //    ast_print(ast_root, "ast.dot");
-    //}
+    if (ast_root) {
+       ast_print(ast_root, "ast.dot");
+    }
 
     printf("\nGenerating Intermediate Code...\n");
         

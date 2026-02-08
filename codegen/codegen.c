@@ -8,6 +8,8 @@
 /* --- Loop Label Stack --- */
 #define MAX_NESTED_LOOPS 50
 
+static int is_reachable = 1;
+
 static LoopLabels loop_stack[MAX_NESTED_LOOPS];
 static int loop_stack_top = -1;
 
@@ -127,6 +129,9 @@ int new_label() {
 
 /* Προσθήκη εντολής (Quad) στη λίστα */
 void emit(IROp op, IROperand arg1, IROperand arg2, IROperand result) {
+    // Αν η σημαία είναι 0, αγνοούμε την παραγωγή της εντολής
+    if (!is_reachable) return;
+
     Quad *q = malloc(sizeof(Quad));
     q->op = op;
     q->arg1 = arg1;
@@ -141,10 +146,17 @@ void emit(IROp op, IROperand arg1, IROperand arg2, IROperand result) {
         quad_tail->next = q;
         quad_tail = q;
     }
+
+    // Αν η εντολή είναι GOTO ή RETURN, ο κώδικας που ακολουθεί είναι νεκρός
+    if (op == IR_GOTO || op == IR_RETURN) {
+        is_reachable = 0;
+    }
 }
 
 void emit_label(int label_id) {
-    // Φτιάχνουμε ένα ειδικό Quad που είναι απλά label marker
+    // Ένα label "ζωντανεύει" ξανά τον κώδικα
+    is_reachable = 1;
+
     Quad *q = malloc(sizeof(Quad));
     q->op = IR_LABEL;
     q->label_id = label_id;
@@ -180,8 +192,18 @@ void print_operand(IROperand op) {
 }
 
 void ir_print() {
+    // --- 1. Data Section (Strings) ---
+    printf("\n--- Data Section ---\n");
+    StringLiteral *str_curr = string_head;
+    while (str_curr) {
+        // Τυπώνουμε: _str_1: "Hello World"
+        printf("_str_%d: \"%s\"\n", str_curr->id, str_curr->value);
+        str_curr = str_curr->next;
+    }
+
+    // --- 2. Code Section (Instructions) ---
+    printf("\n--- Code Section ---\n");
     Quad *curr = quad_head;
-    printf("\n--- Intermediate Code (IR) ---\n");
     while (curr) {
         if (curr->op == IR_LABEL) {
             if (curr->label_id == -1 && curr->arg1.type == OT_CONST_STR) {
@@ -192,8 +214,6 @@ void ir_print() {
         } else {
             printf("\t");
             
-            // FIX: Μην τυπώνεις "RES =" για εντολές που δεν είναι κλασικές αναθέσεις
-            // Εξαιρούμε τα SET_INDEX, PRINT, READ, GOTO, IF, PARAM, RETURN
             int is_assignment = (curr->result.type != OT_NONE) && 
                                 (curr->op != IR_SET_INDEX) && 
                                 (curr->op != IR_IF_FALSE) &&
@@ -204,7 +224,6 @@ void ir_print() {
                                 (curr->op != IR_RETURN) &&
                                 (curr->op != IR_CALL); 
 
-            // Ειδική περίπτωση για το IR_CALL: Έχει αποτέλεσμα, άρα θέλουμε το "="
             if (curr->op == IR_CALL && curr->result.type != OT_NONE) {
                 is_assignment = 1;
             }
@@ -214,7 +233,6 @@ void ir_print() {
                 printf(" = ");
             }
             
-            // Τύπωσε τελεστή και ορίσματα
             switch(curr->op) {
                 case IR_ADD: print_operand(curr->arg1); printf(" + "); print_operand(curr->arg2); break;
                 case IR_SUB: print_operand(curr->arg1); printf(" - "); print_operand(curr->arg2); break;
@@ -236,7 +254,8 @@ void ir_print() {
                 case IR_NOT: printf("!"); print_operand(curr->arg1); break;
 
                 case IR_ASSIGN: print_operand(curr->arg1); break;
-
+                case IR_CVT_I2F: printf("(float) "); print_operand(curr->arg1); break;
+                case IR_CVT_F2I: printf("(int) "); print_operand(curr->arg1); break;
                 case IR_IF_FALSE: 
                     printf("ifFalse "); 
                     print_operand(curr->arg1); 
@@ -246,7 +265,7 @@ void ir_print() {
                 
                 case IR_GOTO: 
                     printf("GOTO "); 
-                    print_operand(curr->arg1); // FIX: Το label είναι στο arg1, όχι στο result
+                    print_operand(curr->arg1); 
                     break;
 
                 case IR_PARAM: printf("param "); print_operand(curr->arg1); break;
@@ -264,7 +283,7 @@ void ir_print() {
                     break;
 
                 case IR_PRINT: printf("PRINT "); print_operand(curr->arg1); break;
-                case IR_READ:  printf("READ ");  print_operand(curr->result); break; // Στο READ το var είναι στο result
+                case IR_READ:  printf("READ ");  print_operand(curr->result); break;
 
                 case IR_INDEX:     
                     print_operand(curr->arg1); 
@@ -274,11 +293,11 @@ void ir_print() {
                     break; 
 
                 case IR_SET_INDEX: 
-                    print_operand(curr->result); // Base array
+                    print_operand(curr->result); 
                     printf("["); 
-                    print_operand(curr->arg1);   // Offset
+                    print_operand(curr->arg1);   
                     printf("] = "); 
-                    print_operand(curr->arg2);   // Value
+                    print_operand(curr->arg2);   
                     break;
 
                 default: printf(" (unknown op) ");
@@ -289,7 +308,6 @@ void ir_print() {
     }
     printf("------------------------------\n");
 }
-//παμε για παραγωγη
 
 // Βοηθητική για να μετατρέπουμε AST Ops σε IR Ops
 IROp map_binary_op(ASTOp op) {
@@ -430,9 +448,28 @@ IROperand codegen(ASTNode *node) {
             }
 
             // --- Κανονικές Αριθμητικές Πράξεις (+, -, *, <, > ...) ---
+            // --- Κανονικές Αριθμητικές Πράξεις (+, -, *, <, > ...) ---
             else {
                 IROperand left = codegen(node->u.binop.left);
                 IROperand right = codegen(node->u.binop.right);
+                
+                Type *t_left = node->u.binop.left->type;
+                Type *t_right = node->u.binop.right->type;
+
+                // Implicit Casting: Μετατροπή αν ένας είναι float και ο άλλος int
+                if (t_left == type_int && t_right == type_float) {
+                    int t_new = new_temp();
+                    IROperand cast_res = make_operand_temp(t_new);
+                    emit(IR_CVT_I2F, left, make_operand_none(), cast_res);
+                    left = cast_res;
+                }
+                else if (t_left == type_float && t_right == type_int) {
+                    int t_new = new_temp();
+                    IROperand cast_res = make_operand_temp(t_new);
+                    emit(IR_CVT_I2F, right, make_operand_none(), cast_res);
+                    right = cast_res;
+                }
+
                 int t = new_temp();
                 IROperand result = make_operand_temp(t);
                 IROp op = map_binary_op(node->u.binop.op);
@@ -444,11 +481,30 @@ IROperand codegen(ASTNode *node) {
         // --- 4. Assignment ---
         case AST_ASSIGN: {
             ASTNode *lhs = node->u.assign.lhs;
-            IROperand rhs_res = codegen(node->u.assign.rhs);
+            IROperand rhs_val = codegen(node->u.assign.rhs);
+            
+            Type *t_lhs = lhs->type;
+            Type *t_rhs = node->u.assign.rhs->type;
+
+            // Εφαρμογή Οδηγίας (β): Αριθμητική συμβατότητα
+            // 1. int σε float (μετατροπή σε πραγματικό)
+            if (t_lhs == type_float && t_rhs == type_int) {
+                int t_new = new_temp();
+                IROperand cast_res = make_operand_temp(t_new);
+                emit(IR_CVT_I2F, rhs_val, make_operand_none(), cast_res);
+                rhs_val = cast_res;
+            }
+            // 2. float σε int (αποκοπή κλασματικού μέρους)
+            else if (t_lhs == type_int && t_rhs == type_float) {
+                int t_new = new_temp();
+                IROperand cast_res = make_operand_temp(t_new);
+                emit(IR_CVT_F2I, rhs_val, make_operand_none(), cast_res);
+                rhs_val = cast_res;
+            }
 
             if (lhs->kind == AST_VAR) {
                 IROperand lhs_op = make_operand_var(lhs->u.var.sym);
-                emit(IR_ASSIGN, rhs_res, make_operand_none(), lhs_op);
+                emit(IR_ASSIGN, rhs_val, make_operand_none(), lhs_op);
                 return lhs_op;
             } 
             else if (lhs->kind == AST_INDEX) {
@@ -482,8 +538,8 @@ IROperand codegen(ASTNode *node) {
                 IROperand base_op = codegen(base_array);
 
                 // Emit: base_op[total_offset] = rhs_res
-                emit(IR_SET_INDEX, total_offset, rhs_res, base_op);
-                return rhs_res;
+                emit(IR_SET_INDEX, total_offset, rhs_val, base_op);
+                return rhs_val;
             }
             return make_operand_none();
         }
