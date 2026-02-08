@@ -58,6 +58,11 @@ void sem_end_function_context(Type **p_current_function_type,
                               int *p_current_function_name_owned,
                               int *p_in_param_context);
 
+ /* If callee_expr is a method member (obj.method), rewrite to Class::method(obj, args).
+   Returns 1 if rewritten and fills out_*.
+   Returns 0 if not a method call (caller should do normal call).*/
+int sem_try_rewrite_method_call(ASTNode *callee_expr,ASTNode *args,int line,Type **out_type,ASTNode **out_call);
+
 //expression
 Type *sem_binary_arith(Type *lhs, Type *rhs, int line);
 Type *sem_binary_relational(Type *lhs, Type *rhs, int line);

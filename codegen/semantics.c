@@ -16,14 +16,14 @@
 static ParamInfo current_params[MAX_PARAMS];
 static int       current_param_count = 0;
 static Symbol *current_function_symbol = NULL;
-static int collecting_signature = 0;  // 1 = χτίζουμε, 0 = ελέγχουμε
+static int collecting_signature = 0;
 static int current_param_index = 0;
 
 //Loop scope
 static int loop_nesting_level = 0;
 
 //ENUMS
-static Type *current_enum_processing_type = NULL; /* Ποιο enum χτίζουμε τώρα */
+static Type *current_enum_processing_type = NULL;
 static int   current_enum_counter = 0;
 static int  sem_in_function = 0;
 
@@ -61,7 +61,6 @@ Type *sem_use_variable(const char *name, int line){
         is_valid = 1;
     } 
     else if (s->kind == SYM_TYPE && s->type && s->type->kind == TYPE_ENUM) {
-        /* Ειδική εξαίρεση για Enums */
         is_valid = 1;
     }
 
@@ -114,7 +113,7 @@ Symbol *sem_lookup_field_symbol(Type *base, const char *field_name, int line)
 
         Symbol *m = (Symbol*)hashtbl_lookup(t->members, field_name, 0);
         if (m) {
-            if (m->kind != SYM_VAR && m->kind != SYM_CONST) {
+            if (m->kind != SYM_VAR && m->kind != SYM_CONST && m->kind != SYM_FUNC) {
                 sem_fatal("member '%s' is not a field at line %d", field_name, line);
             }
             return m;
@@ -179,14 +178,44 @@ void sem_begin_qualified_method_def(Type *ret_candidate,
     if (p_current_function_name_owned) *p_current_function_name_owned = 1;
     if (p_in_param_context)            *p_in_param_context = 1;
 
-    /* Insert qualified function symbol in global (or current) scope */
-    if (!symtab_insert(qname, SYM_FUNC, ret)) {
-        sem_fatal("line %d: redeclaration of method '%s'", line, qname);
+    /* Reuse existing prototype symbol instead of inserting again */
+    Symbol *existing = symtab_lookup(qname);
+    if (existing) {
+        if (existing->kind != SYM_FUNC) {
+            sem_fatal("line %d: '%s' already declared as non-function", line, qname);
+        }
+
+        /* If it was already defined, this is a redefinition */
+        if (existing->u.func.is_forward_decl == 0) {
+            sem_fatal("line %d: redefinition of method '%s'", line, qname);
+        }
+
+        /* Mark prototype as now being defined */
+        existing->u.func.is_forward_decl = 0;
+
+        /* Optional: cheap return-type check (only valid if symbol->type is return type) */
+        if (existing->type != ret && existing->type != type_error && ret != type_error) {
+            sem_fatal("line %d: return type mismatch for method '%s'", line, qname);
+        }
+    } else {
+        /* Allow definition without prior prototype (or change to fatal if your rules forbid it) */
+        if (!symtab_insert(qname, SYM_FUNC, ret)) {
+            sem_fatal("line %d: cannot insert method symbol '%s'", line, qname);
+        }
+
+        /* Ensure it’s marked as a definition */
+        Symbol *s = symtab_lookup(qname);
+        if (s && s->kind == SYM_FUNC) {
+            s->u.func.is_forward_decl = 0;
+        }
     }
 
     /* Enter function scope + start frame accounting */
     symtab_enter_scope();
     sem_frame_begin(qname, line);
+
+    //adds "this" as parameter  
+    sem_declare_param("this", class_type, 1, line);
 }
 
 void sem_end_function_context(Type **p_current_function_type,
@@ -209,6 +238,29 @@ void sem_end_function_context(Type **p_current_function_type,
     if (p_current_function_name) *p_current_function_name = NULL;
     if (p_current_function_unqual) *p_current_function_unqual = NULL;
 }
+
+int sem_try_rewrite_method_call(ASTNode *callee_expr,ASTNode *args,int line,Type **out_type,ASTNode **out_call){
+    if (!callee_expr || callee_expr->kind != AST_FIELD) return 0;
+
+    ASTNode *base = callee_expr->u.field.base;
+    Symbol  *mem  = callee_expr->u.field.member;
+
+    if (!mem || mem->kind != SYM_FUNC) return 0;
+
+    /* Build callee as a normal function variable using qualified name (e.g., A::doo) */
+    ASTNode *callee = ast_make_var(mem->name, mem->type, line);
+
+    /* Prepend the object as hidden first argument (this) */
+    ASTNode *args2 = ast_make_list(base, args, line);
+
+    Type *t = sem_call_check(callee, args2, line);
+
+    if (out_type) *out_type = t;
+    if (out_call) *out_call = ast_make_call(callee, args2, t, line);
+
+    return 1;
+}
+
 
 
 
@@ -323,6 +375,22 @@ Type *sem_check_assignment(Type *left, Type *right, int line){
         const char *rn = right->enum_name;
         if (!ln || !rn || strcmp(ln, rn) != 0) {
             sem_fatal("assignment between different enum types at line %d", line);
+        }
+        return left;
+    }
+
+    if (left->kind == TYPE_CLASS || right->kind == TYPE_CLASS) {
+        if (left->kind != TYPE_CLASS || right->kind != TYPE_CLASS) {
+            sem_fatal("assignment between class and non-class at line %d", line);
+        }
+
+        if (left != right) {
+            /* optional: if you create duplicate Type objects, compare tag_name instead */
+            const char *ln = left->tag_name;
+            const char *rn = right->tag_name;
+            if (!ln || !rn || strcmp(ln, rn) != 0) {
+                sem_fatal("assignment between different class types at line %d", line);
+            }
         }
         return left;
     }

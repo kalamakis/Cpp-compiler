@@ -355,9 +355,19 @@ expression
                                                                                 }
                             | variable T_LPAREN expression_list T_RPAREN
                                                                                 {
-                                                                                    Type *t = sem_call_check($1.node, $3.node, yylineno);
-                                                                                    $$.type = t;
-                                                                                    $$.node = ast_make_call($1.node, $3.node, t, yylineno);
+                                                                                    Type *t = NULL;
+                                                                                    ASTNode *call = NULL;
+                                                                                    
+                                                                                    //if methode rewrite the function call to method call (Class::method(obj, args))
+                                                                                    if (sem_try_rewrite_method_call($1.node, $3.node, yylineno, &t, &call)) {
+                                                                                        $$.type = t;
+                                                                                        $$.node = call;
+                                                                                    } else {
+                                                                                        //noraml function
+                                                                                        t = sem_call_check($1.node, $3.node, yylineno);
+                                                                                        $$.type = t;
+                                                                                        $$.node = ast_make_call($1.node, $3.node, t, yylineno);
+                                                                                    }
                                                                                 }
                             | T_LENGTH T_LPAREN general_expression T_RPAREN
                                                                                 {
@@ -426,8 +436,15 @@ variable
                                                                                 }
                             | T_THIS
                                                                                 {
-                                                                                    $$.type = type_error;  /* placeholder */
-                                                                                    $$.node = NULL;
+                                                                                    Symbol *s = symtab_lookup("this");
+                                                                                    if (!s) {
+                                                                                        YYERROR_FMT("line %d: 'this' used outside of method", yylineno);
+                                                                                        $$.type = type_error;
+                                                                                        $$.node = NULL;
+                                                                                    } else {
+                                                                                        $$.type = s->type;
+                                                                                        $$.node = ast_make_var("this", s->type, yylineno);
+                                                                                    }
                                                                                 }
                             ;
 general_expression
@@ -681,6 +698,9 @@ func_header_start :         type_with_list T_ID                                 
                                                                                                 in_param_context       = 1;
                                                                                                 symtab_enter_scope();
                                                                                                 sem_frame_begin($2, yylineno); //for memory tables
+                                                                                                if(in_class_body && current_class_type && current_class_type->tag_name){
+                                                                                                    sem_declare_param("this", current_class_type, 1, yylineno);
+                                                                                                }
                                                                                             }
                             ;
 
@@ -923,10 +943,8 @@ int main(int argc, char *argv[]){
         ast_print(ast_root, "ast.dot");
     }
 
-    // 1. Κάλεσε το Codegen
     codegen(ast_root);
     
-    // 2. Τύπωσε το αποτέλεσμα
     ir_print();
 
     fclose(yyin);
