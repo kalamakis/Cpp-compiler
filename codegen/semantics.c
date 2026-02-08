@@ -179,36 +179,17 @@ void sem_begin_qualified_method_def(Type *ret_candidate,
     if (p_in_param_context)            *p_in_param_context = 1;
 
     /* Reuse existing prototype symbol instead of inserting again */
-    Symbol *existing = symtab_lookup(qname);
-    if (existing) {
-        if (existing->kind != SYM_FUNC) {
-            sem_fatal("line %d: '%s' already declared as non-function", line, qname);
-        }
-
-        /* If it was already defined, this is a redefinition */
-        if (existing->u.func.is_forward_decl == 0) {
-            sem_fatal("line %d: redefinition of method '%s'", line, qname);
-        }
-
-        /* Mark prototype as now being defined */
-        existing->u.func.is_forward_decl = 0;
-
-        /* Optional: cheap return-type check (only valid if symbol->type is return type) */
-        if (existing->type != ret && existing->type != type_error && ret != type_error) {
-            sem_fatal("line %d: return type mismatch for method '%s'", line, qname);
-        }
-    } else {
-        /* Allow definition without prior prototype (or change to fatal if your rules forbid it) */
-        if (!symtab_insert(qname, SYM_FUNC, ret)) {
-            sem_fatal("line %d: cannot insert method symbol '%s'", line, qname);
-        }
-
-        /* Ensure it’s marked as a definition */
-        Symbol *s = symtab_lookup(qname);
-        if (s && s->kind == SYM_FUNC) {
-            s->u.func.is_forward_decl = 0;
-        }
+    Symbol *existing = symtab_lookup_in_scope(qname, 0);
+    if (!existing) {
+        sem_fatal("line %d: definition of undeclared method '%s'", line, qname);
     }
+    if (existing->kind != SYM_FUNC) {
+        sem_fatal("line %d: '%s' already declared as non-function", line, qname);
+    }
+    if (existing->u.func.is_forward_decl == 0) {
+        sem_fatal("line %d: redefinition of method '%s'", line, qname);
+    }
+    existing->u.func.is_forward_decl = 0;
 
     /* Enter function scope + start frame accounting */
     symtab_enter_scope();
@@ -980,6 +961,9 @@ Symbol *sem_define_function(const char *name, Type *ret_type, int line)
     if (!s) return NULL;
 
     if (!s->u.func.is_forward_decl) {
+        if (strstr(name, "::") != NULL) {
+            return s; /* do NOT error */
+        }
         fprintf(stderr, "Semantic error: redefinition of function '%s' (line %d)\n",name, line);
         return s;
     }

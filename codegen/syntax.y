@@ -635,6 +635,9 @@ short_func_declaration     : short_par_func_header T_SEMI                       
                                                                                                 symtab_leave_scope();
                                                                                                 Symbol *fsym = sem_declare_function(current_function_name,current_function_type,yylineno);
 
+                                                                                                if (fsym && fsym->kind == SYM_FUNC) {
+                                                                                                    fsym->u.func.is_forward_decl = 1;   /* prototype only */
+                                                                                                }
                                                                                                 /* αν είναι class method prototype, add στο members table */
                                                                                                 if (in_class_body && current_class_type && fsym) {
                                                                                                     fsym->access = current_member_access;
@@ -656,6 +659,9 @@ short_func_declaration     : short_par_func_header T_SEMI                       
                                                                                             {
                                                                                                 symtab_leave_scope();
                                                                                                 Symbol *fsym = sem_declare_function(current_function_name,current_function_type,yylineno);
+                                                                                                if (fsym && fsym->kind == SYM_FUNC) {
+                                                                                                    fsym->u.func.is_forward_decl = 1;   /* prototype only */
+                                                                                                }
                                                                                                 if (in_class_body && current_class_type && fsym) {
                                                                                                     fsym->access = current_member_access;
                                                                                                     if (hashtbl_lookup(current_class_type->members, current_function_unqual, 0)) {
@@ -748,9 +754,16 @@ full_func_declaration :     full_par_func_header T_LBRACE decl_statements T_RBRA
                                                                                                             current_function_name = NULL;
                                                                                                             in_param_context = 0;
                                                                                                         }
-                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 { 
-                                                                                                            symtab_leave_scope();  sem_frame_end(current_function_name, yylineno);  
-                                                                                                            in_param_context = 0; current_function_type = NULL; $$.node = $3.node;
+                            | nopar_class_func_header T_LBRACE decl_statements T_RBRACE                 {
+                                                                                                            symtab_leave_scope();
+                                                                                                            sem_frame_end(current_function_name, yylineno);
+
+                                                                                                            ASTNode *body = $3.node;
+                                                                                                            $$.node = ast_make_func_decl(current_function_name, body, yylineno);
+
+                                                                                                            in_param_context = 0;
+                                                                                                            current_function_type = NULL;
+                                                                                                            current_function_name = NULL;   
                                                                                                         }
                             | nopar_func_header T_LBRACE  decl_statements T_RBRACE                      {
                                                                                                             symtab_leave_scope();
