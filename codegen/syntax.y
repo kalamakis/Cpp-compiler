@@ -955,10 +955,17 @@ int main(int argc, char *argv[]){
     if (ast_root) {
        ast_print(ast_root, "ast.dot");
     }
-
-    codegen(ast_root);
     
+    //--IR generation--
+    codegen(ast_root);
     ir_print();
+
+    //--MIPS assembly generation--
+    mips_init("out.s");             // Δημιουργία αρχείου
+    mips_data_section();            // Εγγραφή .data (Strings κλπ)
+    generate_mips();                // Μετάφραση Quads σε MIPS
+    mips_finish();                  // Κλείσιμο αρχείου
+
 
     fclose(yyin);
 
