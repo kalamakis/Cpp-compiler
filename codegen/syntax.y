@@ -610,6 +610,7 @@ variabledef :               T_ID dims                                           
                                                                                             m->access = current_member_access;
                                                                                             m->offset = -1;
                                                                                             hashtbl_insert(current_class_type->members, $1, m, 0);
+                                                                                            sem_class_add_field(current_class_type, m);
                                                                                         }
                                                                                     } else {
                                                                                         Symbol *s = symtab_insert($1, SYM_VAR, t);
@@ -703,7 +704,7 @@ func_header_start :         type_with_list T_ID                                 
                                                                                                 
                                                                                                 in_param_context       = 1;
                                                                                                 symtab_enter_scope();
-                                                                                                sem_frame_begin($2, yylineno); //for memory tables
+                                                                                                sem_frame_begin(current_function_name, yylineno); //for memory tables
                                                                                                 if(in_class_body && current_class_type && current_class_type->tag_name){
                                                                                                     sem_declare_param("this", current_class_type, 1, yylineno);
                                                                                                 }

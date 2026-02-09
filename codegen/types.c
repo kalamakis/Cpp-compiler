@@ -125,8 +125,14 @@ Type *make_class_type(const char *name, Type *base_type){
     t->tag_name = name ? strdup(name) : NULL;
     t->base_type = base_type;
 
+    t->size  = 0;
+    t->align = 4;
+
     /* members table: θα γεμίσει στο semantics */
     t->members = hashtbl_create(211, NULL);
+    t->field_order = NULL;
+    t->field_count = 0;
+    t->field_cap = 0;
     return t;
 }
 

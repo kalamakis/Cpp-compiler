@@ -63,6 +63,8 @@ void sem_end_function_context(Type **p_current_function_type,
    Returns 0 if not a method call (caller should do normal call).*/
 int sem_try_rewrite_method_call(ASTNode *callee_expr,ASTNode *args,int line,Type **out_type,ASTNode **out_call);
 
+void sem_class_add_field(Type *cls, Symbol *field);
+
 //expression
 Type *sem_binary_arith(Type *lhs, Type *rhs, int line);
 Type *sem_binary_relational(Type *lhs, Type *rhs, int line);
