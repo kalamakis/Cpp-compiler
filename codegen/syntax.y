@@ -737,7 +737,15 @@ global_var_declaration :    type_with_list init_variabledefs T_SEMI             
 init_variabledefs :         init_variabledefs T_COMMA init_variabledef                                  {$$ = ast_list_append($1, $3,yylineno); }
                             | init_variabledef                                                          {$$ = $1;}
                             ;
-init_variabledef :          variabledef initializer                                                     { $$ = $1; };
+init_variabledef :          variabledef initializer                                                     { $$ = $1; 
+                                                                                                            int val = $2;                                                                                                            
+                                                                                                            Symbol *s = symtab_lookup($$->u.var_decl.name); 
+                                                                                                            if (s && s->scope == 0) {
+                                                                                                                s->u.c.ival = val;
+                                                                                                            }
+                                                                                                            $$->u.var_decl.init = ast_make_const_int(val, yylineno);
+                                                                                                        
+                                                                                                        };
 
 func_declaration :          short_func_declaration                                                      {$$.node = NULL;}
                             | full_func_declaration                                                     {$$.node = $1.node;}   ;                         
@@ -961,7 +969,7 @@ int main(int argc, char *argv[]){
     ir_print();
 
     //--MIPS assembly generation--
-    mips_init("out.s");             // Δημιουργία αρχείου
+    mips_init("out.asm");             // Δημιουργία αρχείου
     mips_data_section();            // Εγγραφή .data (Strings κλπ)
     generate_mips();                // Μετάφραση Quads σε MIPS
     mips_finish();                  // Κλείσιμο αρχείου
