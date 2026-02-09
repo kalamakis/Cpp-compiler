@@ -10,4 +10,4 @@ lex.yy.c: comp.l
 	flex comp.l
 
 clean:
-	rm -f parser syntax.tab.c syntax.tab.h lex.yy.c comp.output comp.tab.*
+	rm -f parser syntax.tab.c syntax.tab.h lex.yy.c comp.output comp.tab.* ast.dot ast.png out.s out.asm a.out
