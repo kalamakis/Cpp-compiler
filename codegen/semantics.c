@@ -242,6 +242,24 @@ int sem_try_rewrite_method_call(ASTNode *callee_expr,ASTNode *args,int line,Type
     return 1;
 }
 
+void sem_class_add_field(Type *cls, Symbol *field)
+{
+    if (!cls || cls == type_error || cls->kind != TYPE_CLASS) return;
+    if (!field) return;
+    if (!(field->kind == SYM_VAR && field->storage == STOR_FIELD)) return;
+
+    if (cls->field_cap == 0) {
+        cls->field_cap = 8;
+        cls->field_order = (Symbol**)malloc(sizeof(Symbol*) * cls->field_cap);
+        if (!cls->field_order) sem_fatal("out of memory in sem_class_add_field");
+    } else if (cls->field_count >= cls->field_cap) {
+        cls->field_cap *= 2;
+        cls->field_order = (Symbol**)realloc(cls->field_order, sizeof(Symbol*) * cls->field_cap);
+        if (!cls->field_order) sem_fatal("out of memory in sem_class_add_field");
+    }
+
+    cls->field_order[cls->field_count++] = field;
+}
 
 
 
@@ -634,20 +652,16 @@ static void sem_layout_class(Type *t, int line) {
     }
 
     //fields
-    for (hash_size i = 0; i < t->members->size; i++) {
-        struct hashnode_s *n = t->members->nodes[i];
-        while (n) {
-            Symbol *m = (Symbol*)n->data;
-            if (m && m->kind == SYM_VAR && m->storage == STOR_FIELD) {
-                long s = sem_sizeof_rec(m->type, line);
-                if (s < 0) s = 0;
+    for (int k = 0; k < t->field_count; k++) {
+        Symbol *m = t->field_order[k];
+        if (!m) continue;
 
-                off = sem_align4(off);
-                m->offset = (int)off;
-                off += s;
-            }
-            n = n->next;
-        }
+        long s = sem_sizeof_rec(m->type, line);
+        if (s < 0) s = 0;
+
+        off = sem_align4(off);
+        m->offset = (int)off;
+        off += s;
     }
 
     t->size = (int)sem_align4(off);

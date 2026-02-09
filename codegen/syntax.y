@@ -610,6 +610,7 @@ variabledef :               T_ID dims                                           
                                                                                             m->access = current_member_access;
                                                                                             m->offset = -1;
                                                                                             hashtbl_insert(current_class_type->members, $1, m, 0);
+                                                                                            sem_class_add_field(current_class_type, m);
                                                                                         }
                                                                                     } else {
                                                                                         Symbol *s = symtab_insert($1, SYM_VAR, t);

@@ -23,7 +23,6 @@ typedef struct Type {
     TypeKind kind;
     struct Type * elem_type;
     int array_size;           // μόνο για TYPE_ARRAY, μία διάσταση
-    /* Για TYPE_CLASS και TYPE_UNION αργότερα θα μπει λίστα από fields */
     char *enum_name;
 
     char   *tag_name;         // "C"
@@ -31,6 +30,11 @@ typedef struct Type {
     HASHTBL *members;         // key=name -> (Symbol*) fields/methods
     int      size;
     int      align;
+
+    /* for TYPE_CLASS: declaration-order list of fields*/
+    struct Symbol **field_order;
+    int field_count;
+    int field_cap;
 } Type;
 
 typedef struct EnumBuilder {

@@ -31,10 +31,10 @@ Rectangle::init_rect:
 	sw $t1, 0($t0)
 	lw $t0, 8($fp)
 	lw $t1, 16($fp)
-	sw $t1, 8($t0)
+	sw $t1, 4($t0)
 	lw $t0, 8($fp)
 	lw $t1, 20($fp)
-	sw $t1, 4($t0)
+	sw $t1, 8($t0)
 
 # --- Epilogue ---
 	lw $ra, 77($sp)
@@ -49,10 +49,10 @@ Rectangle::area:
 	sw $fp, 573125466($sp)
 	addiu $fp, $sp, 573125466
 	lw $t0, 8($fp)
-	lw $t1, 8($t0)
+	lw $t1, 4($t0)
 	sw $t1, -573125438($fp)
 	lw $t0, 8($fp)
-	lw $t1, 4($t0)
+	lw $t1, 8($t0)
 	sw $t1, -573125442($fp)
 	lw $t0, -573125438($fp)
 	lw $t1, -573125442($fp)
