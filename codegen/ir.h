@@ -2,6 +2,7 @@
 #define IR_H
 
 #include "symbol.h" 
+#include "ast.h"
 
 typedef enum {
     /* Arithmetic */
@@ -83,6 +84,10 @@ typedef struct Quad {
     int label_id;        // Αν η εντολή είναι OP_LABEL, ποιο είναι το νούμερο;
     struct Quad *next;   // Για να τα βάζουμε σε λίστα
 } Quad;
+
+/* Global λίστα με τα Quads */
+extern Quad *quad_head;
+extern Quad *quad_tail;
 
 typedef struct {
     int continue_label;
