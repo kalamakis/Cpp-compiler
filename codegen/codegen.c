@@ -4,6 +4,7 @@
 #include "semantics.h"
 #include "ir.h"
 #include "ast.h"
+#include "symbolTable.h"
 
 /* --- Loop Label Stack --- */
 #define MAX_NESTED_LOOPS 50
@@ -153,16 +154,17 @@ void emit(IROp op, IROperand arg1, IROperand arg2, IROperand result) {
 }
 
 // Νέα, ενιαία συνάρτηση για labels (αριθμητικά ή ονομαστικά)
-void emit_label_ext(int label_id, char* name) {
-    is_reachable = 1; // Η επαναφορά γίνεται ΠΑΝΤΑ εδώ 
+void emit_label_ext(int label_id, Symbol* func_sym) {
+    is_reachable = 1; 
 
     Quad *q = malloc(sizeof(Quad));
     q->op = IR_LABEL;
     q->label_id = label_id;
     
-    if (name) {
-        q->arg1.type = OT_CONST_STR;
-        q->arg1.val.sval = strdup(name);
+    if (func_sym) {
+        // Αποθήκευση ως OT_VAR για να μεταφερθεί το Symbol*
+        q->arg1.type = OT_VAR;
+        q->arg1.val.sym = func_sym;
     } else {
         q->arg1 = make_operand_none();
     }
@@ -207,13 +209,33 @@ void ir_print() {
         str_curr = str_curr->next;
     }
 
-    // --- 2. Code Section (Instructions) ---
+    // --- 2. Global Variables ---
+    extern HASHTBL *g_symtab;
+    if (g_symtab) {
+        for (hash_size i = 0; i < g_symtab->size; i++) {
+            struct hashnode_s *node = g_symtab->nodes[i];
+            while (node) {
+                Symbol *s = (Symbol *)node->data;
+                if (s->scope == 0 && s->kind == SYM_VAR) {
+                    printf("%s: %ld (Global)\n", s->name, s->u.c.ival);
+                }
+                node = node->next;
+            }
+        }
+    }
+
+    // --- 3. Code Section (Instructions) ---
     printf("\n--- Code Section ---\n");
     Quad *curr = quad_head;
     while (curr) {
         if (curr->op == IR_LABEL) {
-            if (curr->label_id == -1 && curr->arg1.type == OT_CONST_STR) {
-                printf("\n%s:\n", curr->arg1.val.sval);
+            if (curr->label_id == -1) {
+                // Αν είναι OT_VAR, παίρνουμε το όνομα από το Symbol
+                if (curr->arg1.type == OT_VAR) {
+                    printf("\n%s:\n", curr->arg1.val.sym->name);
+                } else if (curr->arg1.type == OT_CONST_STR) {
+                    printf("\n%s:\n", curr->arg1.val.sval);
+                }
             } else {
                 printf("L%d:\n", curr->label_id);
             }
@@ -724,13 +746,13 @@ IROperand codegen(ASTNode *node) {
 
         // --- 9. Function Declaration ---
         case AST_FUNC_DECL: {
-            // Καλούμε την επεκταμένη emit_label για το όνομα της συνάρτησης
-            emit_label_ext(-1, node->u.func_decl.name);
-
-            // Παραγωγή κώδικα για το σώμα
-            codegen(node->u.func_decl.body);
+            // Αναζήτηση του συμβόλου της συνάρτησης
+            Symbol *s = symtab_lookup(node->u.func_decl.name);
             
-            // Το is_reachable θα γίνει 0 εδώ αν το σώμα έχει return
+            // Πέρασμα του συμβόλου αντί για το όνομα
+            emit_label_ext(-1, s);
+
+            codegen(node->u.func_decl.body);
             emit(IR_RETURN, make_operand_none(), make_operand_none(), make_operand_none());
             
             return make_operand_none();
