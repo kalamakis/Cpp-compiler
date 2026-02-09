@@ -47,6 +47,9 @@ StringLiteral *string_head = NULL;
 StringLiteral *string_tail = NULL;
 static int string_counter = 0;
 
+Quad *quad_head = NULL;
+Quad *quad_tail = NULL;
+
 /* Προσθέτει ένα string στη λίστα και επιστρέφει το ID του */
 int add_string_literal(const char *str) {
     // Ψάχνουμε αν υπάρχει ήδη (optimization: string interning)
@@ -74,10 +77,6 @@ int add_string_literal(const char *str) {
 
     return new_str->id;
 }
-
-/* Global λίστα με τα Quads */
-Quad *quad_head = NULL;
-Quad *quad_tail = NULL;
 
 /* Μετρητές για Temps και Labels */
 static int temp_counter = 0;
