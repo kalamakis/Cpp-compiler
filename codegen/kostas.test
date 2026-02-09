@@ -31,10 +31,7 @@ int Rectangle::area() {
 
 int main() {
     Rectangle r;
-    int res;
-
-    // r.set_id(1);  <- ΑΠΑΓΟΡΕΥΕΤΑΙ (Upcasting Error)
-    
+    int res;    
     r.init_rect(100, 10, 5);
     res = r.area();
     

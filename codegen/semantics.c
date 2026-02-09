@@ -1245,6 +1245,7 @@ void sem_frame_begin(const char *func_name, int line) {
 void sem_frame_end(const char *func_name, int line) {
     (void)line;
     Symbol *f = sem_lookup_global_func(func_name);
+
     if (f && f->kind == SYM_FUNC) {
         // store locals frame size in bytes (aligned) in f->offset
         f->offset = (int)sem_align4(sem_max_local);

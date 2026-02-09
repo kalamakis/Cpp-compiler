@@ -78,7 +78,7 @@ Symbol *symtab_insert_scoped(const char *name, SymbolKind kind, Type *type, int 
     sym->u.func.is_forward_decl = 0;
 
     sym->storage = (scope == 0) ? STOR_GLOBAL : STOR_LOCAL;
-    sym->offset = -1;
+    sym->offset = 0;
     sym->access = ACC_PUBLIC;
 
     if (hashtbl_insert(g_symtab, name, sym, scope) != 0) {
