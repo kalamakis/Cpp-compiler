@@ -18,4 +18,16 @@ syntaxExtreme/lex.yy.c
 syntaxExtreme/comp.output 
 syntaxExtreme/comp.tab.c
 syntaxExtreme/comp.tab.h
-syntaxExtreme/tokens.h
+
+codegen/parser 
+codegen/syntax.tab.c 
+codegen/syntax.tab.h 
+codegen/lex.yy.c
+codegen/comp.output 
+codegen/comp.tab.c
+codegen/comp.tab.h
+codegen/tokens.h
+codegen/*.o
+codegen/ast.png
+codegen/ast.dot 
+
