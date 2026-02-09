@@ -155,18 +155,11 @@ void generate_mips() {
                 break; 
             }
             // --- 1. Αριθμητικές/Λογικες Πράξεις ---
-            case IR_ADD: {
-                if (curr->result.type == OT_VAR && curr->result.val.sym->type->kind == TYPE_FLOAT) {
-                    load_to_float_reg(curr->arg1, "$f0");
-                    load_to_float_reg(curr->arg2, "$f1");
-                    fprintf(f_asm, "\tadd.s $f2, $f0, $f1\n");
-                    store_from_float_reg("$f2", curr->result);
-                } else {
-                    load_to_reg(curr->arg1, "$t0");
-                    load_to_reg(curr->arg2, "$t1");
-                    fprintf(f_asm, "\tadd $t2, $t0, $t1\n");
-                    store_from_reg("$t2", curr->result);
-                }
+            case IR_ADD:{
+                load_to_reg(curr->arg1, "$t0");
+                load_to_reg(curr->arg2, "$t1");
+                fprintf(f_asm, "\tadd $t2, $t0, $t1\n");
+                fprintf(f_asm, "\tsw $t2, %d($fp)\n", get_mips_offset(curr->result));
                 break;
             }
             case IR_SUB:{
