@@ -15,6 +15,7 @@
     #include "ir.h"
 
     extern FILE *yyin;
+    extern char *yytext;
     extern IROperand codegen(ASTNode *node);
     extern void ir_print();
     extern int yylex();
@@ -927,10 +928,10 @@ main_header :               T_INT T_MAIN  T_LPAREN T_RPAREN                 {
                                                                                 symtab_enter_scope();
                                                                                 sem_frame_begin("main", yylineno);
                                                                             }  
-                            | error T_MAIN  T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
-                            | T_INT error   T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
-                            | T_INT T_MAIN  error       T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
-                            | T_INT T_MAIN  T_LPAREN    error               {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
+                            | error T_MAIN  T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors"); yyerrok; symtab_enter_scope();}
+                            | T_INT error   T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors"); yyerrok; symtab_enter_scope();}
+                            | T_INT T_MAIN  error       T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors"); yyerrok; symtab_enter_scope();}
+                            | T_INT T_MAIN  T_LPAREN    error               {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors"); yyerrok; symtab_enter_scope();}
                             ;
 %%
 
@@ -976,7 +977,11 @@ int main(int argc, char *argv[]){
 
 void yyerror (const char *str){
     yyerrorno++;
-    fprintf(stderr, "ERROR: [line: %d]: %s\n", yylineno, str);
+    if (yytext && *yytext)
+        fprintf(stderr, "ERROR: [line: %d]: %s near '%s'\n", yylineno, str, yytext);
+    else
+        fprintf(stderr, "ERROR: [line: %d]: %s\n", yylineno, str);
+
     if (yyerrorno >= MAX_ERRORS) {
         fprintf(stderr, "MAX ERRORS FOUND\n");
         exit(EXIT_FAILURE);
