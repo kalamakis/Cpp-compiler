@@ -754,21 +754,20 @@ IROperand codegen(ASTNode *node) {
 
         // --- 9. Function Declaration ---
         // --- 9. Function Declaration ---
+        // --- 9. Function Declaration ---
         case AST_FUNC_DECL: {
             Symbol *func_sym = symtab_lookup(node->u.func_decl.name);
             
             Quad *q = malloc(sizeof(Quad));
             q->op = IR_LABEL;
             
-            // ΕΥΚΟΛΟΣ ΤΡΟΠΟΣ: Παίρνουμε το ID από τον τοπικό μας "κατάλογο"
-            q->label_id = get_func_label_id(func_sym);
+            // ΔΙΟΡΘΩΣΗ: Δίνουμε μοναδικό αυξανόμενο ID (π.χ. L1, L2...)
+            q->label_id = new_label(); 
             
-            // Περνάμε το σύμβολο στο arg1 για να ξέρει το finale_codegen το stack size
             if (func_sym) {
                 q->arg1.type = OT_VAR;
                 q->arg1.val.sym = func_sym;
             } else {
-                // Fallback
                 q->arg1.type = OT_CONST_STR;
                 q->arg1.val.sval = strdup(node->u.func_decl.name);
             }
