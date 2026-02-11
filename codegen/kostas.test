@@ -61,3 +61,33 @@ int main() {
     u.b[3] = '\n';
     x = !y[cadr(dl)-i];
 }
+
+class Rectangle : Shape {
+    public:
+        int width;
+        int height;
+        // Η Rectangle έχει δικές της μεθόδους
+        void init_rect(int, int, int);
+        int area();
+};
+
+void Rectangle::init_rect(int i, int w, int h) {
+    // Επιτρέπεται η πρόσβαση στο πεδίο id γιατί το Rectangle 
+    // το περιλαμβάνει στο δικό του memory layout
+    this.id = i; 
+    this.width = w;
+    this.height = h;
+}
+
+int Rectangle::area() {
+    return this.width * this.height;
+}
+
+int main() {
+    Rectangle r;
+    int res;    
+    r.init_rect(100, 10, 5);
+    res = r.area();
+    
+    return res;
+}

@@ -4,7 +4,6 @@
 #include "semantics.h"
 #include "ir.h"
 #include "ast.h"
-#include "symbolTable.h"
 
 /* --- Loop Label Stack --- */
 #define MAX_NESTED_LOOPS 50
@@ -154,17 +153,16 @@ void emit(IROp op, IROperand arg1, IROperand arg2, IROperand result) {
 }
 
 // Νέα, ενιαία συνάρτηση για labels (αριθμητικά ή ονομαστικά)
-void emit_label_ext(int label_id, Symbol* func_sym) {
-    is_reachable = 1; 
+void emit_label_ext(int label_id, char* name) {
+    is_reachable = 1; // Η επαναφορά γίνεται ΠΑΝΤΑ εδώ 
 
     Quad *q = malloc(sizeof(Quad));
     q->op = IR_LABEL;
     q->label_id = label_id;
     
-    if (func_sym) {
-        // Αποθήκευση ως OT_VAR για να μεταφερθεί το Symbol*
-        q->arg1.type = OT_VAR;
-        q->arg1.val.sym = func_sym;
+    if (name) {
+        q->arg1.type = OT_CONST_STR;
+        q->arg1.val.sval = strdup(name);
     } else {
         q->arg1 = make_operand_none();
     }
@@ -209,22 +207,7 @@ void ir_print() {
         str_curr = str_curr->next;
     }
 
-    // --- 2. Global Variables ---
-    extern HASHTBL *g_symtab;
-    if (g_symtab) {
-        for (hash_size i = 0; i < g_symtab->size; i++) {
-            struct hashnode_s *node = g_symtab->nodes[i];
-            while (node) {
-                Symbol *s = (Symbol *)node->data;
-                if (s->scope == 0 && s->kind == SYM_VAR) {
-                    printf("%s: %ld (Global)\n", s->name, s->u.c.ival);
-                }
-                node = node->next;
-            }
-        }
-    }
-
-    // --- 3. Code Section (Instructions) ---
+    // --- 2. Code Section (Instructions) ---
     printf("\n--- Code Section ---\n");
     Quad *curr = quad_head;
     while (curr) {
@@ -772,22 +755,20 @@ IROperand codegen(ASTNode *node) {
         // --- 9. Function Declaration ---
         // --- 9. Function Declaration ---
         case AST_FUNC_DECL: {
-<<<<<<< HEAD
-            // ΔΙΟΡΘΩΣΗ: Αντί για emit_label_ext, φτιάχνουμε το Quad χειροκίνητα
-            // για να περάσουμε το Symbol* (που περιέχει το offset του stack frame)
-            
             Symbol *func_sym = symtab_lookup(node->u.func_decl.name);
             
             Quad *q = malloc(sizeof(Quad));
             q->op = IR_LABEL;
-            q->label_id = new_label();
             
+            // ΕΥΚΟΛΟΣ ΤΡΟΠΟΣ: Παίρνουμε το ID από τον τοπικό μας "κατάλογο"
+            q->label_id = get_func_label_id(func_sym);
+            
+            // Περνάμε το σύμβολο στο arg1 για να ξέρει το finale_codegen το stack size
             if (func_sym) {
-                // Σωστή περίπτωση: Περνάμε το σύμβολο
                 q->arg1.type = OT_VAR;
                 q->arg1.val.sym = func_sym;
             } else {
-                // Fallback (ασφάλεια): Περνάμε το όνομα ως string
+                // Fallback
                 q->arg1.type = OT_CONST_STR;
                 q->arg1.val.sval = strdup(node->u.func_decl.name);
             }
@@ -796,21 +777,10 @@ IROperand codegen(ASTNode *node) {
             q->result = make_operand_none();
             q->next = NULL;
 
-            // Προσθήκη στη λίστα
             if (!quad_head) { quad_head = q; quad_tail = q; }
             else { quad_tail->next = q; quad_tail = q; }
             
             is_reachable = 1;
-
-            // Παραγωγή κώδικα για το σώμα
-            codegen(node->u.func_decl.body);
-=======
-            // Αναζήτηση του συμβόλου της συνάρτησης
-            Symbol *s = symtab_lookup(node->u.func_decl.name);
->>>>>>> 7f6908f63419d87559c437b00ed6ec3bee11373f
-            
-            // Πέρασμα του συμβόλου αντί για το όνομα
-            emit_label_ext(-1, s);
 
             codegen(node->u.func_decl.body);
             emit(IR_RETURN, make_operand_none(), make_operand_none(), make_operand_none());
@@ -900,7 +870,7 @@ IROperand codegen(ASTNode *node) {
 
             return result;
         }
-
+        
         // --- Array Access ---
         case AST_INDEX: {
             ASTNode *curr = node;

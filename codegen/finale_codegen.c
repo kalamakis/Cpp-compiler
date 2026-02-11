@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include "ir.h"
 #include "symbol.h"
-#include "symbolTable.h"
 
 FILE *f_asm;
 
@@ -18,31 +17,15 @@ void mips_init(const char *filename) {
 
 void mips_data_section() {
     fprintf(f_asm, ".data\n");
-    fprintf(f_asm, ".align 2\n");
     fprintf(f_asm, "newline: .asciiz \"\\n\"\n");
     
-    // Strings
     extern StringLiteral *string_head; 
-    StringLiteral *curr_str = string_head;
-    while (curr_str) {
-        fprintf(f_asm, "_str_%d: .asciiz \"%s\"\n", curr_str->id, curr_str->value);
-        curr_str = curr_str->next;
+    StringLiteral *curr = string_head;
+    while (curr) {
+        fprintf(f_asm, "_str_%d: .asciiz \"%s\"\n", curr->id, curr->value);
+        curr = curr->next;
     }
-
-    // Global Variables
-    extern HASHTBL *g_symtab;
-    if (g_symtab) {
-        for (hash_size i = 0; i < g_symtab->size; i++) {
-            struct hashnode_s *node = g_symtab->nodes[i];
-            while (node) {
-                Symbol *s = (Symbol *)node->data;
-                if (s->scope == 0 && s->kind == SYM_VAR) {
-                    fprintf(f_asm, "%s: .word %ld\n", s->name, s->u.c.ival);
-                }
-                node = node->next;
-            }
-        }
-    }
+    fprintf(f_asm, "\n");
 }
 
 void mips_finish() {
@@ -149,11 +132,35 @@ void store_result(IROperand res, const char *reg, int is_float) {
     }
 }
 
-void store_from_reg(const char *reg, IROperand result) {
-    if (result.type == OT_VAR && result.val.sym->scope == 0) {
-        fprintf(f_asm, "\tsw %s, %s\n", reg, result.val.sym->name);
+// Φόρτωση σε Float Register ($f0-$f12)
+void load_to_freg(IROperand op, const char *reg) {
+    if (op.type == OT_CONST_FLOAT) {
+        fprintf(f_asm, "\tli.s %s, %.6f\n", reg, op.val.fval);
+    } else if (op.type == OT_VAR || op.type == OT_TEMP) {
+        if (is_global(op)) {
+            fprintf(f_asm, "\tl.s %s, _%s\n", reg, op.val.sym->name);
+        } else {
+            fprintf(f_asm, "\tl.s %s, %d($fp)\n", reg, get_mips_offset(op));
+        }
+    } else if (op.type == OT_CONST_INT) {
+         // Αν κατά λάθος ζητηθεί int σε float reg, κάνε convert
+         fprintf(f_asm, "\tli $t9, %d\n", op.val.ival);
+         fprintf(f_asm, "\tmtc1 $t9, %s\n", reg);
+         fprintf(f_asm, "\tcvt.s.w %s, %s\n", reg, reg);
+    }
+}
+
+// Αποθήκευση αποτελέσματος (Int ή Float)
+void store_result(IROperand res, const char *reg, int is_float) {
+    if (res.type == OT_NONE) return;
+    
+    int offset = get_mips_offset(res);
+    char *store_instr = is_float ? "s.s" : "sw";
+    
+    if (is_global(res)) {
+        fprintf(f_asm, "\t%s %s, _%s\n", store_instr, reg, res.val.sym->name);
     } else {
-        fprintf(f_asm, "\tsw %s, %d($fp)\n", reg, get_mips_offset(result));
+        fprintf(f_asm, "\t%s %s, %d($fp)\n", store_instr, reg, offset);
     }
 }
 
@@ -341,12 +348,6 @@ void generate_mips() {
                 load_to_reg(curr->arg1, "$t0");
                 // Αν είναι 0 (false), πήδα στο label (arg2)
                 fprintf(f_asm, "\tbeqz $t0, L%d\n", curr->arg2.val.ival);
-                break;
-            }
-            case IR_IF: {
-                // Αν η συνθήκη (arg1) ΔΕΝ είναι 0 (True), πήδα στο label (arg2)
-                load_to_reg(curr->arg1, "$t0");
-                fprintf(f_asm, "\tbnez $t0, L%d\n", curr->arg2.val.ival);
                 break;
             }
             // --- 5. Συναρτήσεις ---
@@ -539,9 +540,9 @@ void generate_mips() {
             // }
             case IR_RETURN: {
                 if (curr->arg1.type != OT_NONE) {
-                    load_to_reg(curr->arg1, "$v0"); 
+                    load_to_reg(curr->arg1, "$v0"); // Το αποτέλεσμα επιστρέφει πάντα στον $v0
                 }
-                mips_epilogue(current_local_size); 
+                mips_epilogue(current_local_size);
                 break;
             }
         }

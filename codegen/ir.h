@@ -113,7 +113,7 @@ IROperand make_operand_none();
 int new_temp();
 int new_label();
 void emit(IROp op, IROperand arg1, IROperand arg2, IROperand result);
-void emit_label_ext(int label_id, Symbol* func_sym);
+void emit_label_ext(int label_id, char* name);
 void emit_label(int label_id);
 void print_operand(IROperand op);
 void ir_print();
