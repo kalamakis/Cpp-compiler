@@ -118,6 +118,6 @@ void emit_label(int label_id);
 void print_operand(IROperand op);
 void ir_print();
 IROp map_binary_op(ASTOp op);
-int gen_args(ASTNode *node);
+int gen_args(ASTNode *node, Symbol *func_sym, int *arg_idx);
 IROperand codegen(ASTNode *node);
 #endif
