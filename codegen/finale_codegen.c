@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include "ir.h"
 #include "symbol.h"
+#include "symbolTable.h"
 
 FILE *f_asm;
 
@@ -17,15 +18,31 @@ void mips_init(const char *filename) {
 
 void mips_data_section() {
     fprintf(f_asm, ".data\n");
+    fprintf(f_asm, ".align 2\n");
     fprintf(f_asm, "newline: .asciiz \"\\n\"\n");
     
+    // Strings
     extern StringLiteral *string_head; 
-    StringLiteral *curr = string_head;
-    while (curr) {
-        fprintf(f_asm, "_str_%d: .asciiz \"%s\"\n", curr->id, curr->value);
-        curr = curr->next;
+    StringLiteral *curr_str = string_head;
+    while (curr_str) {
+        fprintf(f_asm, "_str_%d: .asciiz \"%s\"\n", curr_str->id, curr_str->value);
+        curr_str = curr_str->next;
     }
-    fprintf(f_asm, "\n");
+
+    // Global Variables
+    extern HASHTBL *g_symtab;
+    if (g_symtab) {
+        for (hash_size i = 0; i < g_symtab->size; i++) {
+            struct hashnode_s *node = g_symtab->nodes[i];
+            while (node) {
+                Symbol *s = (Symbol *)node->data;
+                if (s->scope == 0 && s->kind == SYM_VAR) {
+                    fprintf(f_asm, "%s: .word %ld\n", s->name, s->u.c.ival);
+                }
+                node = node->next;
+            }
+        }
+    }
 }
 
 void mips_finish() {
@@ -129,6 +146,14 @@ void store_result(IROperand res, const char *reg, int is_float) {
         fprintf(f_asm, "\t%s %s, _%s\n", store_instr, reg, res.val.sym->name);
     } else {
         fprintf(f_asm, "\t%s %s, %d($fp)\n", store_instr, reg, offset);
+    }
+}
+
+void store_from_reg(const char *reg, IROperand result) {
+    if (result.type == OT_VAR && result.val.sym->scope == 0) {
+        fprintf(f_asm, "\tsw %s, %s\n", reg, result.val.sym->name);
+    } else {
+        fprintf(f_asm, "\tsw %s, %d($fp)\n", reg, get_mips_offset(result));
     }
 }
 
@@ -318,6 +343,12 @@ void generate_mips() {
                 fprintf(f_asm, "\tbeqz $t0, L%d\n", curr->arg2.val.ival);
                 break;
             }
+            case IR_IF: {
+                // Αν η συνθήκη (arg1) ΔΕΝ είναι 0 (True), πήδα στο label (arg2)
+                load_to_reg(curr->arg1, "$t0");
+                fprintf(f_asm, "\tbnez $t0, L%d\n", curr->arg2.val.ival);
+                break;
+            }
             // --- 5. Συναρτήσεις ---
             case IR_PARAM:{
                 // 1. Φόρτωσε την παράμετρο σε έναν register
@@ -500,11 +531,17 @@ void generate_mips() {
                 fprintf(f_asm, "\tsw $v0, %d($fp)\n", get_mips_offset(curr->result));
                 break;
             }
-            case IR_RETURN:{
+            // case IR_RETURN:{
+            //     if (curr->arg1.type != OT_NONE) {
+            //         load_to_reg(curr->arg1, "$v0"); // Το αποτέλεσμα επιστρέφει πάντα στον $v0
+            //     }
+            //     break;
+            // }
+            case IR_RETURN: {
                 if (curr->arg1.type != OT_NONE) {
-                    load_to_reg(curr->arg1, "$v0"); // Το αποτέλεσμα επιστρέφει πάντα στον $v0
+                    load_to_reg(curr->arg1, "$v0"); 
                 }
-                mips_epilogue(current_local_size);
+                mips_epilogue(current_local_size); 
                 break;
             }
         }
