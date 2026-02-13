@@ -4,6 +4,8 @@
 #include "symbol.h"
 
 FILE *f_asm;
+static int needs_strcmp = 0;
+static int needs_strcat = 0;
 
 // --- phase 0: Initialization ---
 
@@ -20,9 +22,34 @@ void mips_data_section() {
     fprintf(f_asm, "newline: .asciiz \"\\n\"\n");
     
     extern StringLiteral *string_head; 
-    StringLiteral *curr = string_head;
+    StringLiteral *curr_str = string_head;
+    while (curr_str) {
+        fprintf(f_asm, "_str_%d: .asciiz \"%s\"\n", curr_str->id, curr_str->value);
+        curr_str = curr_str->next;
+    }
+    
+    fprintf(f_asm, "\n# --- Global Variables ---\n");
+    const char *emitted_globals[500]; // Κρατάμε ποια τυπώσαμε για αποφυγή διπλοεγγραφών
+    int eg_count = 0;
+    
+    Quad *curr = quad_head;
     while (curr) {
-        fprintf(f_asm, "_str_%d: .asciiz \"%s\"\n", curr->id, curr->value);
+        IROperand ops[3] = {curr->arg1, curr->arg2, curr->result};
+        for (int k = 0; k < 3; k++) {
+            if (is_global(ops[k])) {
+                Symbol *sym = ops[k].val.sym;
+                int already_emitted = 0;
+                for (int i = 0; i < eg_count; i++) {
+                    if (strcmp(emitted_globals[i], sym->name) == 0) { already_emitted = 1; break; }
+                }
+                if (!already_emitted) {
+                    emitted_globals[eg_count++] = sym->name;
+                    int size = sem_sizeof_bytes(sym->type, 0);
+                    if (size < 4) size = 4; // Word alignment
+                    fprintf(f_asm, "_%s: .space %d\n", sym->name, size);
+                }
+            }
+        }
         curr = curr->next;
     }
     fprintf(f_asm, "\n");
@@ -30,9 +57,31 @@ void mips_data_section() {
 
 void mips_finish() {
     if (f_asm) {
-        // Exit syscall για να μην "τρέξει" ο κώδικας έξω από τη main
         fprintf(f_asm, "\n# Exit program\n");
         fprintf(f_asm, "\tli $v0, 10\n\tsyscall\n");
+        
+        // --- Τυπώνεται ΜΟΝΟ αν χρησιμοποιήθηκε σύγκριση strings ---
+        if (needs_strcmp) {
+            fprintf(f_asm, "\n# Built-in strcmp (a0=str1, a1=str2, v0=result)\n");
+            fprintf(f_asm, "_strcmp:\n");
+            fprintf(f_asm, "1:\tlbu $t0, 0($a0)\n\tlbu $t1, 0($a1)\n");
+            fprintf(f_asm, "\tbne $t0, $t1, 2f\n\tbeq $t0, $zero, 3f\n");
+            fprintf(f_asm, "\taddiu $a0, $a0, 1\n\taddiu $a1, $a1, 1\n\tj 1b\n");
+            fprintf(f_asm, "2:\tsub $v0, $t0, $t1\n\tjr $ra\n");
+            fprintf(f_asm, "3:\tli $v0, 0\n\tjr $ra\n");
+        }
+
+        // --- Τυπώνεται ΜΟΝΟ αν χρησιμοποιήθηκε ένωση strings (+) ---
+        if (needs_strcat) {
+            fprintf(f_asm, "\n# Built-in strcat (a0=dest, a1=src1, a2=src2)\n");
+            fprintf(f_asm, "_strcat:\n\tmove $t0, $a0\n");
+            fprintf(f_asm, "1:\tlbu $t1, 0($a1)\n\tbeq $t1, $zero, 2f\n");
+            fprintf(f_asm, "\tsb $t1, 0($t0)\n\taddiu $a1, $a1, 1\n\taddiu $t0, $t0, 1\n\tj 1b\n");
+            fprintf(f_asm, "2:\tlbu $t1, 0($a2)\n\tsb $t1, 0($t0)\n");
+            fprintf(f_asm, "\tbeq $t1, $zero, 3f\n\taddiu $a2, $a2, 1\n\taddiu $t0, $t0, 1\n\tj 2b\n");
+            fprintf(f_asm, "3:\tjr $ra\n");
+        }
+
         fclose(f_asm);
     }
 }
@@ -116,6 +165,19 @@ void load_to_freg(IROperand op, const char *reg) {
     }
 }
 
+// Φόρτωση Διεύθυνσης μνήμης στον register (κρίσιμο για Strings)
+void load_addr_to_reg(IROperand op, const char *reg) {
+    if (op.type == OT_CONST_STR) {
+        fprintf(f_asm, "\tla %s, %s\n", reg, op.val.sval);
+    } else if (op.type == OT_VAR) {
+        if (is_global(op)) fprintf(f_asm, "\tla %s, _%s\n", reg, op.val.sym->name);
+        else fprintf(f_asm, "\taddiu %s, $fp, %d\n", reg, get_mips_offset(op));
+    } else if (op.type == OT_TEMP) {
+        // Τα temps που κρατάνε string περιέχουν Pointer (από malloc/sbrk)
+        fprintf(f_asm, "\tlw %s, %d($fp)\n", reg, get_mips_offset(op));
+    }
+}
+
 // Αποθήκευση αποτελέσματος (Int ή Float)
 void store_result(IROperand res, const char *reg, int is_float) {
     if (res.type == OT_NONE) return;
@@ -130,7 +192,6 @@ void store_result(IROperand res, const char *reg, int is_float) {
     }
 }
 
-// Βοηθητική συνάρτηση για αντιγραφή μνήμης (memcpy σε MIPS)
 // src_reg, dest_reg: registers που περιέχουν τις διευθύνσεις
 void emit_memcpy(const char *dest_reg, const char *src_reg, int size) {
     static int copy_lbl = 0;
@@ -158,7 +219,11 @@ void generate_mips() {
     Quad *curr = quad_head;
     int current_frame_size = 0;
    // --- Εξυπνος Έλεγχος για Float Πράξεις ---
-    int is_float = 0;
+    int is_float;
+    int is_string;
+
+    while (curr) {
+        is_float = 0;
         
         // Έλεγχος Arg1
         if (curr->arg1.type == OT_CONST_FLOAT) is_float = 1;
@@ -171,7 +236,12 @@ void generate_mips() {
         // Έλεγχος Result
         if (curr->result.type == OT_VAR && curr->result.val.sym && curr->result.val.sym->type && curr->result.val.sym->type->kind == TYPE_FLOAT) is_float = 1;
 
-    while (curr) {
+        // --- Έλεγχος για String Πράξεις ---
+        is_string = 0;
+        if (curr->arg1.type == OT_CONST_STR || curr->arg2.type == OT_CONST_STR) is_string = 1;
+        if (!is_string && curr->arg1.type == OT_VAR && curr->arg1.val.sym && curr->arg1.val.sym->type && curr->arg1.val.sym->type->kind == TYPE_STRING) is_string = 1;
+        if (!is_string && curr->arg2.type == OT_VAR && curr->arg2.val.sym && curr->arg2.val.sym->type && curr->arg2.val.sym->type->kind == TYPE_STRING) is_string = 1;
+
         switch(curr->op) {
             case IR_LABEL:{
                 if (curr->arg1.type != OT_NONE) {
@@ -201,8 +271,17 @@ void generate_mips() {
                 break;
             }
             // --- 1. Αριθμητικές/Λογικες Πράξεις ---
-            case IR_ADD:
-                if (is_float) {
+            case IR_ADD:{
+                if (is_string) {
+                    needs_strcat = 1;
+                    fprintf(f_asm, "\tli $v0, 9\n\tli $a0, 256\n\tsyscall\n");
+                    store_result(curr->result, "$v0", 0); // Σώζουμε τον pointer στο Temp
+                    
+                    fprintf(f_asm, "\tmove $a0, $v0\n"); // Dest buffer
+                    load_addr_to_reg(curr->arg1, "$a1");
+                    load_addr_to_reg(curr->arg2, "$a2");
+                    fprintf(f_asm, "\tjal _strcat\n");
+                } else if (is_float) {
                     load_to_freg(curr->arg1, "$f0");
                     load_to_freg(curr->arg2, "$f1");
                     fprintf(f_asm, "\tadd.s $f2, $f0, $f1\n");
@@ -214,8 +293,8 @@ void generate_mips() {
                     store_result(curr->result, "$t2", 0);
                 }
                 break;
-            
-            case IR_SUB:
+            }
+            case IR_SUB:{
                 if (is_float) {
                     load_to_freg(curr->arg1, "$f0");
                     load_to_freg(curr->arg2, "$f1");
@@ -228,8 +307,8 @@ void generate_mips() {
                     store_result(curr->result, "$t2", 0);
                 }
                 break;
-
-            case IR_MUL:
+            }
+            case IR_MUL:{
                 if (is_float) {
                     load_to_freg(curr->arg1, "$f0");
                     load_to_freg(curr->arg2, "$f1");
@@ -242,8 +321,8 @@ void generate_mips() {
                     store_result(curr->result, "$t2", 0);
                 }
                 break;
-
-            case IR_DIV:
+            }
+            case IR_DIV:{
                 if (is_float) {
                     load_to_freg(curr->arg1, "$f0");
                     load_to_freg(curr->arg2, "$f1");
@@ -257,7 +336,7 @@ void generate_mips() {
                     store_result(curr->result, "$t2", 0);
                 }
                 break;
-
+            }
             case IR_MOD:{
                 load_to_reg(curr->arg1, "$t0");
                 load_to_reg(curr->arg2, "$t1");
@@ -282,7 +361,14 @@ void generate_mips() {
             }
             // --- 2. Σγκρίσεις (Relational) ---
             case IR_EQ:{
-                if (is_float) {
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tseq $t2, $v0, 0\n"); // True αν v0 == 0
+                    store_result(curr->result, "$t2", 0);
+                } else if (is_float) {
                     load_to_freg(curr->arg1, "$f0");
                     load_to_freg(curr->arg2, "$f1");
                     fprintf(f_asm, "\tc.eq.s $f0, $f1\n"); // Compare Equal Single
@@ -304,7 +390,14 @@ void generate_mips() {
                 break;
             }
             case IR_LT:{
-                if (is_float) {
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tslt $t2, $v0, $zero\n"); // True αν v0 < 0
+                    store_result(curr->result, "$t2", 0);
+                } else if (is_float) {
                     load_to_freg(curr->arg1, "$f0");
                     load_to_freg(curr->arg2, "$f1");
                     fprintf(f_asm, "\tc.lt.s $f0, $f1\n"); // Check Less Than
@@ -323,7 +416,15 @@ void generate_mips() {
                 break;
             }
             case IR_GT:{
-                if (is_float) {
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tsgt $t2, $v0, $zero\n"); // True αν v0 > 0
+                    store_result(curr->result, "$t2", 0);
+                }
+                else if (is_float) {
                     // MIPS doesn't have c.gt.s, so we use c.le.s and invert logic OR swap operands
                     // Logic: A > B is equivalent to NOT (A <= B)
                     load_to_freg(curr->arg1, "$f0");
@@ -344,7 +445,15 @@ void generate_mips() {
                 break;
             }
             case IR_NE:{
-                if (is_float) {
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tsne $t2, $v0, $zero\n"); // True αν v0 != 0
+                    store_result(curr->result, "$t2", 0);
+                }
+                else if (is_float) {
                     load_to_freg(curr->arg1, "$f0");
                     load_to_freg(curr->arg2, "$f1");
                     fprintf(f_asm, "\tc.eq.s $f0, $f1\n"); // Check Equal
@@ -363,7 +472,15 @@ void generate_mips() {
                 break;
             }
             case IR_GE:{
-                if (is_float) {
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tsge $t2, $v0, $zero\n"); // True αν v0 >= 0
+                    store_result(curr->result, "$t2", 0);
+                }
+                else if (is_float) {
                     // Logic: A >= B is equivalent to NOT (A < B)
                     load_to_freg(curr->arg1, "$f0");
                     load_to_freg(curr->arg2, "$f1");
@@ -383,7 +500,15 @@ void generate_mips() {
                 break;
             }
             case IR_LE:{
-                if (is_float) {
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tsle $t2, $v0, $zero\n"); // True αν v0 <= 0
+                    store_result(curr->result, "$t2", 0);
+                }
+                else if (is_float) {
                     load_to_freg(curr->arg1, "$f0");
                     load_to_freg(curr->arg2, "$f1");
                     fprintf(f_asm, "\tc.le.s $f0, $f1\n"); // Check Less or Equal
@@ -511,7 +636,7 @@ void generate_mips() {
                 break;
             }
             // --- Helper: Load Address (&variable) ---
-            case IR_LOAD_ADDR:
+            case IR_LOAD_ADDR:{
                 if (is_global(curr->arg1)) {
                     fprintf(f_asm, "\tla $t0, _%s\n", curr->arg1.val.sym->name);
                 } else {
@@ -520,7 +645,7 @@ void generate_mips() {
                 }
                 store_result(curr->result, "$t0", 0);
                 break;
-
+            }
             // --- 7. Classes: Fields Access ---
             case IR_GET_FIELD:{
                 // Εντολή: result = base_addr.(+offset)
@@ -559,56 +684,40 @@ void generate_mips() {
                 break;
             }
             //-- typecasting --
-            case IR_CVT_I2F: // Int to Float
+            case IR_CVT_I2F:{ // Int to Float
                 load_to_reg(curr->arg1, "$t0");
                 fprintf(f_asm, "\tmtc1 $t0, $f0\n");    // Μεταφορά στον coprocessor 1
                 fprintf(f_asm, "\tcvt.s.w $f0, $f0\n"); // Μετατροπή Word σε Single precision
                 store_result(curr->result, "$f0", 1);
                 break;
-
-            case IR_CVT_F2I: // Float to Int
+            }
+            case IR_CVT_F2I:{ // Float to Int
                 load_to_freg(curr->arg1, "$f0");
                 fprintf(f_asm, "\tcvt.w.s $f0, $f0\n"); // Μετατροπή Single σε Word
                 fprintf(f_asm, "\tmfc1 $t0, $f0\n");    // Μεταφορά πίσω σε CPU register
                 store_result(curr->result, "$t0", 0);
                 break;
-
+            }
             //-- βασικές εντολές --
             case IR_ASSIGN: {
                 int size = 4; // Default scalar size
-                
-                // Πρέπει να βρούμε το μέγεθος. Κοιτάμε το σύμβολο του arg1 ή result
                 Symbol *s = NULL;
                 if (curr->arg1.type == OT_VAR) s = curr->arg1.val.sym;
                 else if (curr->result.type == OT_VAR) s = curr->result.val.sym;
                 
                 // Αν βρούμε σύμβολο και έχει τύπο ARRAY ή STRING
                 if (s && s->type && (s->type->kind == TYPE_ARRAY || s->type->kind == TYPE_STRING)) {
-                    // Υπολογισμός μεγέθους (χρησιμοποιούμε τη σημασιολογία)
-                    // Εδώ κάνουμε μια παραδοχή: Strings = 256 bytes, Arrays = size * elem
                     if (s->type->kind == TYPE_STRING) size = 256;
                     else size = s->type->array_size * sem_sizeof_bytes(s->type->elem_type, 0); // 0 line dummy
                 }
 
                 if (size > 4) {
-                    // --- ARRAY/STRING COPY ---
-                    // 1. Load Source Address -> $t0
-                    if (curr->arg1.type == OT_CONST_STR) {
-                        fprintf(f_asm, "\tla $t0, %s\n", curr->arg1.val.sval); // String Literal
-                    } else if (curr->arg1.type == OT_VAR) {
-                        if (is_global(curr->arg1)) fprintf(f_asm, "\tla $t0, _%s\n", curr->arg1.val.sym->name);
-                        else fprintf(f_asm, "\taddiu $t0, $fp, %d\n", get_mips_offset(curr->arg1));
-                    }
-                    
-                    // 2. Load Dest Address -> $t1
-                    if (is_global(curr->result)) fprintf(f_asm, "\tla $t1, _%s\n", curr->result.val.sym->name);
-                    else fprintf(f_asm, "\taddiu $t1, $fp, %d\n", get_mips_offset(curr->result));
-
-                    // 3. Call memcpy
+                    load_addr_to_reg(curr->arg1, "$t0"); // Source Addr
+                    load_addr_to_reg(curr->result, "$t1"); // Dest Addr
                     emit_memcpy("$t1", "$t0", size);
                 } else {
                     // --- SCALAR COPY ---
-                    if (curr->arg1.type == OT_CONST_FLOAT) {
+                    if (is_float) {
                         load_to_freg(curr->arg1, "$f0");
                         store_result(curr->result, "$f0", 1);
                     } else {
@@ -619,7 +728,7 @@ void generate_mips() {
                 break;
             }
 
-            case IR_PRINT:
+            case IR_PRINT:{
                 // 1. Περίπτωση String Literal (π.χ. "Hello")
                 if (curr->arg1.type == OT_CONST_STR) {
                     fprintf(f_asm, "\tli $v0, 4\n");
@@ -628,9 +737,9 @@ void generate_mips() {
                 } 
                 // 2. Περίπτωση Float Literal (π.χ. 3.14)
                 else if (curr->arg1.type == OT_CONST_FLOAT) {
-                     fprintf(f_asm, "\tli $v0, 2\n");
-                     load_to_freg(curr->arg1, "$f12"); // Το syscall 2 θέλει το όρισμα στον $f12
-                     fprintf(f_asm, "\tsyscall\n");
+                    fprintf(f_asm, "\tli $v0, 2\n");
+                    load_to_freg(curr->arg1, "$f12"); // Το syscall 2 θέλει το όρισμα στον $f12
+                    fprintf(f_asm, "\tsyscall\n");
                 } 
                 // 3. Περίπτωση Μεταβλητής (VAR)
                 else if (curr->arg1.type == OT_VAR) {
@@ -638,9 +747,9 @@ void generate_mips() {
                     
                     // Α. Είναι Float Variable; -> Syscall 2
                     if (s->type && s->type->kind == TYPE_FLOAT) {
-                         fprintf(f_asm, "\tli $v0, 2\n");
-                         load_to_freg(curr->arg1, "$f12");
-                         fprintf(f_asm, "\tsyscall\n");
+                        fprintf(f_asm, "\tli $v0, 2\n");
+                        load_to_freg(curr->arg1, "$f12");
+                        fprintf(f_asm, "\tsyscall\n");
                     } 
                     // Β. Είναι String Variable; -> Syscall 4
                     else if (s->type && s->type->kind == TYPE_STRING) {
@@ -671,9 +780,9 @@ void generate_mips() {
                 }
                 
                 // Εκτύπωση αλλαγής γραμμής (όπως ορίζει η CPP στο παράδειγμα)
-                fprintf(f_asm, "\tli $v0, 4\n\tla $a0, newline\n\tsyscall\n");
+                //fprintf(f_asm, "\tli $v0, 4\n\tla $a0, newline\n\tsyscall\n");
                 break;
-
+            }
             case IR_READ: {
                 int syscall_code = 5; // Default Read Integer
                 

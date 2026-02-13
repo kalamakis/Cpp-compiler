@@ -906,20 +906,43 @@ IROperand codegen(ASTNode *node) {
             return result;
         }
 
-        // --- Unary Operators (-, !) ---
+        // --- Unary Operators (-, !, ++, --) ---
         case AST_UNOP: {
             IROperand arg = codegen(node->u.unop.expr);
             int t = new_temp();
             IROperand result = make_operand_temp(t);
             
             if (node->u.unop.op == OP_SUB) {
-                // Unary Minus: t = -arg
                 emit(IR_NEG, arg, make_operand_none(), result);
+                return result;
             } else if (node->u.unop.op == OP_NOT) {
-                // Logical Not: t = !arg
                 emit(IR_NOT, arg, make_operand_none(), result);
+                return result;
+            } else if (node->u.unop.op == OP_PRE_INC) {
+                // ++x:  x = x + 1, επιστρέφει το νέο x
+                emit(IR_ADD, arg, make_operand_int(1), result); 
+                emit(IR_ASSIGN, result, make_operand_none(), arg); 
+                return arg; 
+            } else if (node->u.unop.op == OP_PRE_DEC) {
+                // --x:  x = x - 1, επιστρέφει το νέο x
+                emit(IR_SUB, arg, make_operand_int(1), result); 
+                emit(IR_ASSIGN, result, make_operand_none(), arg); 
+                return arg;
+            } else if (node->u.unop.op == OP_POST_INC) {
+                // x++: κρατάει παλιά τιμή στο result, x = x + 1
+                emit(IR_ASSIGN, arg, make_operand_none(), result); 
+                int t2 = new_temp();
+                emit(IR_ADD, arg, make_operand_int(1), make_operand_temp(t2));
+                emit(IR_ASSIGN, make_operand_temp(t2), make_operand_none(), arg);
+                return result; 
+            } else if (node->u.unop.op == OP_POST_DEC) {
+                // x--: κρατάει παλιά τιμή στο result, x = x - 1
+                emit(IR_ASSIGN, arg, make_operand_none(), result); 
+                int t2 = new_temp();
+                emit(IR_SUB, arg, make_operand_int(1), make_operand_temp(t2));
+                emit(IR_ASSIGN, make_operand_temp(t2), make_operand_none(), arg);
+                return result; 
             }
-            // Πρόσθεσε εδώ άλλα unary (π.χ. OP_PRE_INC) αν χρειάζεται
             return result;
         }
 

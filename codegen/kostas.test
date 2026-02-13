@@ -1,37 +1,103 @@
+// 1. Δοκιμή: Καθολικές Μεταβλητές (Globals)
+int global_counter;
+string global_prefix;
 
 int main() {
-    float a, b, sum, div;
-    int i;
-    string s;
+    int a, b;
+    string s1, s2, s3, s4;
 
-    // 1. Δοκιμή Ανάθεσης και Πράξεων Float
-    a = 10.5;
-    b = 2.5;
-    
-    sum = a + b; // Πρέπει να βγάλει 13.00
-    div = a / b; // Πρέπει να βγάλει 4.20
+    // --- Έλεγχος Globals ---
+    global_counter = 100;
+    global_prefix = "Hello ";
+    cout << "Global counter is: " << global_counter << "\n";
 
-    cout << "A=" << a << ", B=" << b << "\n";
-    cout << "Sum (13.0): " << sum << "\n";
-    cout << "Div (4.2): " << div << "\n";
+    // --- 2. Έλεγχος Αυξομείωσης (++, --) ---
+    a = 5;
+    b = ++a; 
+    cout << "Pre-inc (++a) : a=" << a << ", b=" << b << " (Expected: 6, 6)\n";
 
-    // 2. Δοκιμή Σύγκρισης Float (Coprocessor Flags)
-    if (div > 4.0) {
-        cout << "Success: 4.2 is greater than 4.0\n";
+    a = 5;
+    b = a++; 
+    cout << "Post-inc (a++) : a=" << a << ", b=" << b << " (Expected: 6, 5)\n";
+
+    a = 5;
+    b = --a; 
+    cout << "Pre-dec (--a) : a=" << a << ", b=" << b << " (Expected: 4, 4)\n";
+
+    a = 5;
+    b = a--; 
+    cout << "Post-dec (a--) : a=" << a << ", b=" << b << " (Expected: 4, 5)\n";
+
+    // --- 3. Έλεγχος Ένωσης Strings (Concat) ---
+    s1 = "World";
+    s2 = global_prefix + s1;
+    cout << "Concat result  : " << s2 << "\n"; // Πρέπει να τυπώσει "Hello World"
+
+    // --- 4. Έλεγχος Σύγκρισης Strings (Compare) ---
+    s1 = "Apple";
+    s2 = "Banana";
+    s3 = "Apple";
+
+    if (s1 == s3) {
+        cout << "Success: Apple == Apple\n";
     } else {
-        cout << "Failure: Comparison logic error\n";
+        cout << "FAIL: String == operator\n";
     }
 
-    if (sum == 13.0) {
-        cout << "Success: Sum is exactly 13.0\n";
+    if (s1 != s2) {
+        cout << "Success: Apple != Banana\n";
+    } else {
+        cout << "FAIL: String != operator\n";
     }
 
-    // 3. Δοκιμή Strings και Εισόδου (Cin)
-    s = "Enter an integer: ";
-    cout << s;
-    
-    cin >> i;
-    cout << "You entered: " << i << "\n";
+    if (s1 < s2) {
+        cout << "Success: Apple < Banana (A comes before B)\n";
+    } else {
+        cout << "FAIL: String < operator\n";
+    }
+
+    if (s2 > s1) {
+        cout << "Success: Banana > Apple\n";
+    } else {
+        cout << "FAIL: String > operator\n";
+    }
 
     return 0;
 }
+
+// int main() {
+//     float a, b, sum, div;
+//     int i;
+//     string s;
+
+//     // 1. Δοκιμή Ανάθεσης και Πράξεων Float
+//     a = 10.5;
+//     b = 2.5;
+    
+//     sum = a + b; // Πρέπει να βγάλει 13.00
+//     div = a / b; // Πρέπει να βγάλει 4.20
+
+//     cout << "A=" << a << ", B=" << b << "\n";
+//     cout << "Sum (13.0): " << sum << "\n";
+//     cout << "Div (4.2): " << div << "\n";
+
+//     // 2. Δοκιμή Σύγκρισης Float (Coprocessor Flags)
+//     if (div > 4.0) {
+//         cout << "Success: 4.2 is greater than 4.0\n";
+//     } else {
+//         cout << "Failure: Comparison logic error\n";
+//     }
+
+//     if (sum == 13.0) {
+//         cout << "Success: Sum is exactly 13.0\n";
+//     }
+
+//     // 3. Δοκιμή Strings και Εισόδου (Cin)
+//     s = "Enter an integer: ";
+//     cout << s;
+    
+//     cin >> i;
+//     cout << "You entered: " << i << "\n";
+
+//     return 0;
+// }
