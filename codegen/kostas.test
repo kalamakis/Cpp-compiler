@@ -37,7 +37,7 @@ int main() {
     s1 = "Apple";
     s2 = "Banana";
     s3 = "Apple";
-
+    
     if (s1 == s3) {
         cout << "Success: Apple == Apple\n";
     } else {

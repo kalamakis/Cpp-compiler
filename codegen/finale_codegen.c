@@ -7,6 +7,73 @@ FILE *f_asm;
 static int needs_strcmp = 0;
 static int needs_strcat = 0;
 
+// --- Register Allocation for Temps ---
+#define NUM_INT_REGS 7
+#define NUM_FLOAT_REGS 7
+
+static const char* int_pool[NUM_INT_REGS] = {"$t3", "$t4", "$t5", "$t6", "$t7", "$t8", "$t9"};
+static const char* float_pool[NUM_FLOAT_REGS] = {"$f4", "$f5", "$f6", "$f7", "$f8", "$f9", "$f10"};
+
+static int int_reg_used[NUM_INT_REGS] = {0};
+static int float_reg_used[NUM_FLOAT_REGS] = {0};
+
+// Δυναμικός χάρτης: Temp ID -> Assigned Register String
+static char **temp_location = NULL;
+static int temp_location_capacity = 0;
+
+// Συνάρτηση δέσμευσης καταχωρητή
+const char* allocate_reg(int temp_id, int is_float) {
+    // 1. Δυναμική επέκταση του χάρτη αν χρειάζεται
+    if (temp_id >= temp_location_capacity) {
+        int new_cap = temp_id + 100;
+        char **new_arr = realloc(temp_location, new_cap * sizeof(char*));
+        if (!new_arr) { perror("Memory allocation failed"); exit(1); }
+        memset(new_arr + temp_location_capacity, 0, (new_cap - temp_location_capacity) * sizeof(char*));
+        temp_location = new_arr;
+        temp_location_capacity = new_cap;
+    }
+
+    // 2. Επιστροφή υπάρχοντος (κρίσιμο για OP_AND / OP_OR short circuiting!)
+    if (temp_location[temp_id] != NULL) {
+        return temp_location[temp_id];
+    }
+
+    if (is_float) {
+        for (int i = 0; i < NUM_FLOAT_REGS; i++) {
+            if (!float_reg_used[i]) {
+                float_reg_used[i] = 1;
+                temp_location[temp_id] = (char*)float_pool[i];
+                return float_pool[i];
+            }
+        }
+    } else {
+        for (int i = 0; i < NUM_INT_REGS; i++) {
+            if (!int_reg_used[i]) {
+                int_reg_used[i] = 1;
+                temp_location[temp_id] = (char*)int_pool[i];
+                return int_pool[i];
+            }
+        }
+    }
+    
+    return NULL;
+}
+
+// Συνάρτηση απελευθέρωσης (καλείται μόλις διαβαστεί ένα temp)
+void free_temp_reg(int temp_id) {
+    if (temp_id >= temp_location_capacity) return;
+    char* reg = temp_location[temp_id];
+    if (!reg) return; // Ήταν spill στη μνήμη
+
+    for (int i = 0; i < NUM_INT_REGS; i++) {
+        if (strcmp(reg, int_pool[i]) == 0) { int_reg_used[i] = 0; break; }
+    }
+    for (int i = 0; i < NUM_FLOAT_REGS; i++) {
+        if (strcmp(reg, float_pool[i]) == 0) { float_reg_used[i] = 0; break; }
+    }
+    temp_location[temp_id] = NULL; // Το διαγράφουμε από τον χάρτη
+}
+
 // --- phase 0: Initialization ---
 
 void mips_init(const char *filename) {
@@ -128,7 +195,7 @@ void mips_epilogue(int local_size) {
 
 // --- Load/Store Helpers ---
 
-// Φόρτωση σε Integer Register ($t0-$t9)
+// Φόρτωση σε Integer Register
 void load_to_reg(IROperand op, const char *reg) {
     if (op.type == OT_CONST_INT) {
         fprintf(f_asm, "\tli %s, %d\n", reg, op.val.ival);
@@ -136,14 +203,17 @@ void load_to_reg(IROperand op, const char *reg) {
         fprintf(f_asm, "\tli %s, %d\n", reg, (int)op.val.cval);
     } else if (op.type == OT_CONST_STR) {
         fprintf(f_asm, "\tla %s, %s\n", reg, op.val.sval);
-    } else if (op.type == OT_VAR || op.type == OT_TEMP) {
-        if (is_global(op)) {
-            // Global: Access by label name
-            fprintf(f_asm, "\tlw %s, _%s\n", reg, op.val.sym->name);
+    } else if (op.type == OT_TEMP) {
+        char* mapped_reg = (op.val.ival < temp_location_capacity) ? temp_location[op.val.ival] : NULL;
+        if (mapped_reg) {
+            fprintf(f_asm, "\tmove %s, %s\n", reg, mapped_reg); // Ταχύτατο Register-to-Register!
+            free_temp_reg(op.val.ival); // Απελευθέρωση για επόμενη χρήση
         } else {
-            // Local: Access by $fp offset
-            fprintf(f_asm, "\tlw %s, %d($fp)\n", reg, get_mips_offset(op));
+            fprintf(f_asm, "\tlw %s, %d($fp)\n", reg, get_mips_offset(op)); // Fallback σε Spilled memory
         }
+    } else if (op.type == OT_VAR) {
+        if (is_global(op)) fprintf(f_asm, "\tlw %s, _%s\n", reg, op.val.sym->name);
+        else fprintf(f_asm, "\tlw %s, %d($fp)\n", reg, get_mips_offset(op));
     }
 }
 
@@ -151,17 +221,21 @@ void load_to_reg(IROperand op, const char *reg) {
 void load_to_freg(IROperand op, const char *reg) {
     if (op.type == OT_CONST_FLOAT) {
         fprintf(f_asm, "\tli.s %s, %.6f\n", reg, op.val.fval);
-    } else if (op.type == OT_VAR || op.type == OT_TEMP) {
-        if (is_global(op)) {
-            fprintf(f_asm, "\tl.s %s, _%s\n", reg, op.val.sym->name);
+    } else if (op.type == OT_TEMP) {
+        char* mapped_reg = (op.val.ival < temp_location_capacity) ? temp_location[op.val.ival] : NULL;
+        if (mapped_reg) {
+            fprintf(f_asm, "\tmov.s %s, %s\n", reg, mapped_reg); 
+            free_temp_reg(op.val.ival);
         } else {
             fprintf(f_asm, "\tl.s %s, %d($fp)\n", reg, get_mips_offset(op));
         }
+    } else if (op.type == OT_VAR) {
+        if (is_global(op)) fprintf(f_asm, "\tl.s %s, _%s\n", reg, op.val.sym->name);
+        else fprintf(f_asm, "\tl.s %s, %d($fp)\n", reg, get_mips_offset(op));
     } else if (op.type == OT_CONST_INT) {
-         // Αν κατά λάθος ζητηθεί int σε float reg, κάνε convert
-         fprintf(f_asm, "\tli $t9, %d\n", op.val.ival);
-         fprintf(f_asm, "\tmtc1 $t9, %s\n", reg);
-         fprintf(f_asm, "\tcvt.s.w %s, %s\n", reg, reg);
+        fprintf(f_asm, "\tli $t9, %d\n", op.val.ival);
+        fprintf(f_asm, "\tmtc1 $t9, %s\n", reg);
+        fprintf(f_asm, "\tcvt.s.w %s, %s\n", reg, reg);
     }
 }
 
@@ -173,15 +247,33 @@ void load_addr_to_reg(IROperand op, const char *reg) {
         if (is_global(op)) fprintf(f_asm, "\tla %s, _%s\n", reg, op.val.sym->name);
         else fprintf(f_asm, "\taddiu %s, $fp, %d\n", reg, get_mips_offset(op));
     } else if (op.type == OT_TEMP) {
-        // Τα temps που κρατάνε string περιέχουν Pointer (από malloc/sbrk)
-        fprintf(f_asm, "\tlw %s, %d($fp)\n", reg, get_mips_offset(op));
+        char* mapped_reg = (op.val.ival < temp_location_capacity) ? temp_location[op.val.ival] : NULL;
+        if (mapped_reg) {
+            fprintf(f_asm, "\tmove %s, %s\n", reg, mapped_reg);
+            free_temp_reg(op.val.ival);
+        } else {
+            fprintf(f_asm, "\tlw %s, %d($fp)\n", reg, get_mips_offset(op));
+        }
     }
 }
 
 // Αποθήκευση αποτελέσματος (Int ή Float)
+
 void store_result(IROperand res, const char *reg, int is_float) {
     if (res.type == OT_NONE) return;
     
+    // --- REGISTER ALLOCATION ΓΙΑ TEMPS ---
+    if (res.type == OT_TEMP) {
+        const char* allocated_reg = allocate_reg(res.val.ival, is_float);
+        if (allocated_reg) {
+            // Βρήκαμε ελεύθερο καταχωρητή!
+            if (is_float) fprintf(f_asm, "\tmov.s %s, %s\n", allocated_reg, reg);
+            else fprintf(f_asm, "\tmove %s, %s\n", allocated_reg, reg);
+            return; // Τέλος, παρακάμπτουμε το γράψιμο στη μνήμη
+        }
+        // Αν allocated_reg == NULL, συνεχίζει κάτω και το γράφει στη μνήμη (Spill)
+    }
+
     int offset = get_mips_offset(res);
     char *store_instr = is_float ? "s.s" : "sw";
     
@@ -245,6 +337,9 @@ void generate_mips() {
         switch(curr->op) {
             case IR_LABEL:{
                 if (curr->arg1.type != OT_NONE) {
+                    memset(int_reg_used, 0, sizeof(int_reg_used));
+                    memset(float_reg_used, 0, sizeof(float_reg_used));
+
                     // Λειτουργία Συνάρτησης
                     char *func_name;
                     int stack_size = 0;
@@ -835,5 +930,11 @@ void generate_mips() {
             }
         }
         curr = curr->next;
+    }
+
+    if (temp_location) {
+        free(temp_location);
+        temp_location = NULL;
+        temp_location_capacity = 0;
     }
 }

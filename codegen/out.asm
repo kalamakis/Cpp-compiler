@@ -68,8 +68,8 @@ copy_end_1:
 	lw $t0, -4($fp)
 	li $t1, 1
 	add $t2, $t0, $t1
-	sw $t2, -1044($fp)
-	lw $t0, -1044($fp)
+	move $t3, $t2
+	move $t0, $t3
 	sw $t0, -4($fp)
 	lw $t0, -4($fp)
 	sw $t0, -8($fp)
@@ -91,14 +91,14 @@ copy_end_1:
 	li $t0, 5
 	sw $t0, -4($fp)
 	lw $t0, -4($fp)
-	sw $t0, -1048($fp)
+	move $t3, $t0
 	lw $t0, -4($fp)
 	li $t1, 1
 	add $t2, $t0, $t1
-	sw $t2, -1052($fp)
-	lw $t0, -1052($fp)
+	move $t4, $t2
+	move $t0, $t4
 	sw $t0, -4($fp)
-	lw $t0, -1048($fp)
+	move $t0, $t3
 	sw $t0, -8($fp)
 	li $v0, 4
 	la $a0, _str_7
@@ -120,8 +120,8 @@ copy_end_1:
 	lw $t0, -4($fp)
 	li $t1, 1
 	sub $t2, $t0, $t1
-	sw $t2, -1056($fp)
-	lw $t0, -1056($fp)
+	move $t3, $t2
+	move $t0, $t3
 	sw $t0, -4($fp)
 	lw $t0, -4($fp)
 	sw $t0, -8($fp)
@@ -143,14 +143,14 @@ copy_end_1:
 	li $t0, 5
 	sw $t0, -4($fp)
 	lw $t0, -4($fp)
-	sw $t0, -1060($fp)
+	move $t3, $t0
 	lw $t0, -4($fp)
 	li $t1, 1
 	sub $t2, $t0, $t1
-	sw $t2, -1064($fp)
-	lw $t0, -1064($fp)
+	move $t4, $t2
+	move $t0, $t4
 	sw $t0, -4($fp)
-	lw $t0, -1060($fp)
+	move $t0, $t3
 	sw $t0, -8($fp)
 	li $v0, 4
 	la $a0, _str_11
@@ -182,12 +182,12 @@ copy_end_2:
 	li $v0, 9
 	li $a0, 256
 	syscall
-	sw $v0, -1068($fp)
+	move $t3, $v0
 	move $a0, $v0
 	la $a1, _global_prefix
 	addiu $a2, $fp, -264
 	jal _strcat
-	lw $t0, -1068($fp)
+	move $t0, $t3
 	addiu $t1, $fp, -520
 	li $t4, 256
 copy_loop_3:
@@ -248,8 +248,8 @@ copy_end_6:
 	addiu $a1, $fp, -776
 	jal _strcmp
 	seq $t2, $v0, 0
-	sw $t2, -1072($fp)
-	lw $t0, -1072($fp)
+	move $t3, $t2
+	move $t0, $t3
 	beqz $t0, L2
 	li $v0, 4
 	la $a0, _str_17
@@ -264,8 +264,8 @@ L3:
 	addiu $a1, $fp, -520
 	jal _strcmp
 	sne $t2, $v0, $zero
-	sw $t2, -1076($fp)
-	lw $t0, -1076($fp)
+	move $t3, $t2
+	move $t0, $t3
 	beqz $t0, L4
 	li $v0, 4
 	la $a0, _str_19
@@ -280,8 +280,8 @@ L5:
 	addiu $a1, $fp, -520
 	jal _strcmp
 	slt $t2, $v0, $zero
-	sw $t2, -1080($fp)
-	lw $t0, -1080($fp)
+	move $t3, $t2
+	move $t0, $t3
 	beqz $t0, L6
 	li $v0, 4
 	la $a0, _str_21
@@ -296,8 +296,8 @@ L7:
 	addiu $a1, $fp, -264
 	jal _strcmp
 	sgt $t2, $v0, $zero
-	sw $t2, -1084($fp)
-	lw $t0, -1084($fp)
+	move $t3, $t2
+	move $t0, $t3
 	beqz $t0, L8
 	li $v0, 4
 	la $a0, _str_23
