@@ -131,6 +131,7 @@ static const char *kind_to_string(ASTKind k) {
         case AST_VAR:       return "VAR";
         case AST_CONST:     return "CONST";
         case AST_LIST:      return "LIST";
+        case AST_LIST_FUNC: return "LIST_FUNC";
         case AST_INDEX:     return "INDEX";
         case AST_CIN:       return "CIN";
         case AST_COUT:      return "COUT";
@@ -305,6 +306,10 @@ static int ast_print_dot_rec(ASTNode *n, FILE *out) {
             snprintf(extra, sizeof(extra), "%s = %d", n->u.enum_const.name, n->u.enum_const.value);
             break;
 
+        case AST_LIST_FUNC:
+            snprintf(extra, sizeof(extra), "%s", n->u.list_func.name);
+            break;
+
         default:
             break;
     }
@@ -411,6 +416,10 @@ static int ast_print_dot_rec(ASTNode *n, FILE *out) {
         case AST_LIST:
             CHILD("head",     n->u.list.head);
             CHILD("tail",     n->u.list.tail);
+            break;
+
+        case AST_LIST_FUNC:
+            CHILD("list", n->u.list_func.arg);
             break;
 
         case AST_CIN:

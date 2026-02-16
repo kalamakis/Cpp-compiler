@@ -97,5 +97,7 @@ void sem_scope_pop_offsets(void);
 void sem_bind_param_symbol(Symbol *s, int line);
 void sem_bind_var_symbol(Symbol *s, int line);
 
+static int analyze_list_func_name(const char *name);
+Type *sem_list_func(const char *name, Type *arg_type, int line);
 
 #endif

@@ -94,7 +94,7 @@
 %token <strval>     T_NOTOP              "notop"
 %token <strval>     T_INCDEC             "incdec"
 %token T_SIZEOP             "sizeop"
-%token T_LISTFUNC           "listfunc"
+%token <strval>     T_LISTFUNC           "listfunc"
 %token T_LPAREN             "lparen"
 %token T_RPAREN             "rparen"
 %token T_SEMI               "semi"
@@ -382,9 +382,9 @@ variable
                                                                                 }
                             | T_LISTFUNC T_LPAREN general_expression T_RPAREN
                                                                                 {
-                                                                                    /* TODO: listfunc semantics */
-                                                                                    $$.type = type_error;
-                                                                                    $$.node = NULL;
+                                                                                    Type *t = sem_list_func($1, $3.type, yylineno);
+                                                                                    $$.type = t;
+                                                                                    $$.node = ast_make_list_func($1, $3.node, t, yylineno);
                                                                                 }
                             | decltype T_ID
                                                                                 {
