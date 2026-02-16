@@ -33,6 +33,8 @@ typedef enum {
     AST_LIST,
 
     AST_INDEX,   /* array[index] */
+
+    AST_LIST_FUNC
     // ... later: classes, enums, etc.
 } ASTKind;
 
@@ -101,6 +103,9 @@ struct ASTNode {
         /*Πεδίο για enums*/
         struct { char *name; struct ASTNode *constants; } enum_decl;
         struct { char *name; int value; } enum_const;
+
+        /*Πεδίο για listfunc*/
+        struct { char *name; struct ASTNode *arg; } list_func;
     } u;
 
 
@@ -145,4 +150,5 @@ ASTNode *ast_make_cout(ASTNode *exprs, int line);
 ASTNode *ast_make_enum_decl(char *name, ASTNode *constants, int line);
 ASTNode *ast_make_enum_const(char *name, int value, int line);
 
+ASTNode *ast_make_list_func(char *name, ASTNode *arg, Type *type, int line);
 #endif

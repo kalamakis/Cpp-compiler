@@ -266,4 +266,9 @@ ASTNode *ast_make_enum_const(char *name, int value, int line) {
     return n;
 }
 
-
+ASTNode *ast_make_list_func(char *name, ASTNode *arg, Type *type, int line) {
+    ASTNode *n = ast_new(AST_LIST_FUNC, type, line);
+    n->u.list_func.name = strdup(name); // Κρατάμε αντίγραφο του ονόματος
+    n->u.list_func.arg = arg;
+    return n;
+}
