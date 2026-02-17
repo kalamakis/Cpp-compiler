@@ -15,6 +15,7 @@
     #include "ir.h"
 
     extern FILE *yyin;
+    extern char *yytext;
     extern IROperand codegen(ASTNode *node);
     extern void ir_print();
     extern int yylex();
@@ -837,6 +838,10 @@ decl_statements :           declarations statements                             
                             ;
 declarations :              declarations decltype type_with_list  variabledefs T_SEMI
                             | decltype type_with_list variabledefs T_SEMI
+                            /* | decltype error T_SEMI                             {
+                                                                                    yyerror("invalid declaration");
+                                                                                    yyerrok;
+                                                                                } */
                             ;
 decltype :                  T_STATIC | %empty         {;};
 loop_enter :                %empty                                              { sem_enter_loop(); } 
@@ -848,7 +853,6 @@ statements :                statements statement                                
                                                                                         $$.node = $2.node;
                                                                                 }
                             | statement                                         { $$.node = $1.node; }
-                            /* | statements error T_SEMI                           { YYERROR_FMT(" HINT:  error in statement - skipping until ';'"); yyerrok; } */
                             ;
 statement :                 expression_statement                                             { $$ = $1; }
                             | if_statement                                                   { $$ = $1; }                                                         
@@ -926,7 +930,9 @@ out_item :                  general_expression                                  
                                                                                                 $$ = $1.node;
                                                                                             }
                             ;
-comp_statement :            T_LBRACE {symtab_enter_scope(); sem_scope_push_offsets();} decl_statements T_RBRACE    { sem_scope_pop_offsets(); symtab_leave_scope(); $$.node = $3.node;};
+comp_statement:             T_LBRACE {symtab_enter_scope(); sem_scope_push_offsets();} decl_statements T_RBRACE { sem_scope_pop_offsets(); symtab_leave_scope(); $$.node = $3.node; }
+                            | T_LBRACE {symtab_enter_scope(); sem_scope_push_offsets();} error T_RBRACE { sem_scope_pop_offsets(); symtab_leave_scope(); yyerrok; $$.node = NULL; }
+                            ;
 main_function :             main_header T_LBRACE decl_statements T_RBRACE   { 
                                                                                 sem_frame_end(current_function_name, yylineno);
                                                                                 symtab_leave_scope();    
@@ -943,10 +949,10 @@ main_header :               T_INT T_MAIN  T_LPAREN T_RPAREN                 {
                                                                                 symtab_enter_scope();
                                                                                 sem_frame_begin("main", yylineno);
                                                                             }  
-                            | error T_MAIN  T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
-                            | T_INT error   T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
-                            | T_INT T_MAIN  error       T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
-                            | T_INT T_MAIN  T_LPAREN    error               {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors\n"); yyerrok; symtab_enter_scope();}
+                            | error T_MAIN  T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors"); yyerrok; symtab_enter_scope();}
+                            | T_INT error   T_LPAREN    T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors"); yyerrok; symtab_enter_scope();}
+                            | T_INT T_MAIN  error       T_RPAREN            {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors"); yyerrok; symtab_enter_scope();}
+                            | T_INT T_MAIN  T_LPAREN    error               {YYERROR_FMT(" HINT: wrong use of int main() or failed due to earlier errors"); yyerrok; symtab_enter_scope();}
                             ;
 %%
 
@@ -992,7 +998,11 @@ int main(int argc, char *argv[]){
 
 void yyerror (const char *str){
     yyerrorno++;
-    fprintf(stderr, "ERROR: [line: %d]: %s\n", yylineno, str);
+    if (yytext && *yytext)
+        fprintf(stderr, "ERROR: [line: %d]: %s near '%s'\n", yylineno, str, yytext);
+    else
+        fprintf(stderr, "ERROR: [line: %d]: %s\n", yylineno, str);
+
     if (yyerrorno >= MAX_ERRORS) {
         fprintf(stderr, "MAX ERRORS FOUND\n");
         exit(EXIT_FAILURE);
