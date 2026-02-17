@@ -122,7 +122,10 @@ binary_digits "1"{binary_digit}*
 ">>"                                            {t_print(T_INP); return T_INP;}
 "<<"                                            {t_print(T_OUT); return T_OUT;}
 
-"C"(("A""D"*)|("D"+))"R"                        {t_print(T_LISTFUNC); return T_LISTFUNC;}
+"C"(("A""D"*)|("D"+))"R"                        {
+                                                    yylval.strval = strdup(yytext);
+                                                    t_print(T_LISTFUNC); return T_LISTFUNC;
+                                                }
 
 "_"*[a-zA-Z]([a-zA-Z0-9]*|("_"?[a-zA-Z0-9])*)                           {t_print(T_ID); yylval.strval=strdup(yytext); return T_ID;}
 

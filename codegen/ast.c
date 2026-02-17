@@ -283,3 +283,10 @@ ASTNode *ast_make_break(int line) {
 ASTNode *ast_make_continue(int line) {
     return ast_new(AST_CONTINUE, NULL, line);
 }
+
+ASTNode *ast_make_list_func(char *name, ASTNode *arg, Type *type, int line) {
+    ASTNode *n = ast_new(AST_LIST_FUNC, type, line);
+    n->u.list_func.name = strdup(name);
+    n->u.list_func.arg = arg;
+    return n;
+}

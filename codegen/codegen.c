@@ -725,23 +725,71 @@ IROperand codegen(ASTNode *node) {
         }
 
         // --- 8. Block (Λίστα εντολών) ---
-        // Στο AST σου μπορεί να είναι AST_BLOCK ή AST_LIST
-        // Εδώ υποθέτω ότι το Program έχει lists από stmts
         case AST_BLOCK: {
-            // Συνήθως έχεις μια λίστα "stmts"
-            // Αν το AST_BLOCK έχει απλά pointers σε lists:
-            ASTNode *curr = node->u.block.stmts; 
-            // Προσοχή: Εδώ εξαρτάται πώς έχεις υλοποιήσει τη λίστα στο AST.
-            // Αν είναι συνδεδεμένη λίστα κόμβων (όπως φαίνεται στο ast.h με AST_LIST):
-            codegen(curr); // Αναδρομή στη λίστα
+            // Διασχίζουμε τη λίστα εντολών ΧΩΡΙΣ να καλέσουμε codegen στο AST_LIST node
+            // για να μην παραχθεί κώδικας IR_CONS (heap allocation) για τις εντολές.
+            ASTNode *curr = node->u.block.stmts;
+            
+            while (curr) {
+                if (curr->kind == AST_LIST) {
+                    // Εκτέλεση της εντολής (head)
+                    if (curr->u.list.head) {
+                        codegen(curr->u.list.head);
+                    }
+                    // Προχωράμε στην επόμενη (tail)
+                    curr = curr->u.list.tail;
+                } else {
+                    // Αν έχουμε μεμονωμένη εντολή (όχι σε λίστα)
+                    codegen(curr);
+                    break; 
+                }
+            }
             return make_operand_none();
         }
         
         case AST_LIST: {
-            // Διασχίζουμε τη λίστα
-            if (node->u.list.head) codegen(node->u.list.head);
-            if (node->u.list.tail) codegen(node->u.list.tail);
-            return make_operand_none();
+            IROperand head_op = make_operand_none();
+            if (node->u.list.head) {
+                head_op = codegen(node->u.list.head);
+            } else {
+                head_op = make_operand_int(0); 
+            }
+
+            IROperand tail_op = make_operand_int(0); 
+            if (node->u.list.tail) {
+                tail_op = codegen(node->u.list.tail);
+            }
+
+            int t = new_temp();
+            IROperand result = make_operand_temp(t);
+
+            emit(IR_CONS, head_op, tail_op, result);
+            
+            return result;
+        }
+
+        // 2. Συναρτήσεις Λίστας
+        case AST_LIST_FUNC: {
+            IROperand current_list = codegen(node->u.list_func.arg);
+
+            char *fname = node->u.list_func.name; 
+            int len = strlen(fname);
+
+            for (int i = len - 2; i >= 1; i--) {
+                char c = fname[i];
+                int t = new_temp();
+                IROperand res = make_operand_temp(t);
+
+                if (c == 'A' || c == 'a') {
+                    emit(IR_CAR, current_list, make_operand_none(), res);
+                } else if (c == 'D' || c == 'd') {
+                    emit(IR_CDR, current_list, make_operand_none(), res);
+                }
+                
+                current_list = res;
+            }
+
+            return current_list;
         }
 
         // --- 9. Function Declaration ---
