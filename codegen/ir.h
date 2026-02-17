@@ -118,11 +118,11 @@ IROperand make_operand_none();
 int new_temp();
 int new_label();
 void emit(IROp op, IROperand arg1, IROperand arg2, IROperand result);
-void emit_label_ext(int label_id, Symbol* func_sym);
+void emit_label_ext(int label_id, char* name);
 void emit_label(int label_id);
 void print_operand(IROperand op);
 void ir_print();
 IROp map_binary_op(ASTOp op);
-int gen_args(ASTNode *node);
+int gen_args(ASTNode *node, Symbol *func_sym, int *arg_idx);
 IROperand codegen(ASTNode *node);
 #endif

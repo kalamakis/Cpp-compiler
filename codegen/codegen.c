@@ -4,7 +4,6 @@
 #include "semantics.h"
 #include "ir.h"
 #include "ast.h"
-#include "symbolTable.h"
 
 /* --- Loop Label Stack --- */
 #define MAX_NESTED_LOOPS 50
@@ -154,17 +153,16 @@ void emit(IROp op, IROperand arg1, IROperand arg2, IROperand result) {
 }
 
 // Νέα, ενιαία συνάρτηση για labels (αριθμητικά ή ονομαστικά)
-void emit_label_ext(int label_id, Symbol* func_sym) {
-    is_reachable = 1; 
+void emit_label_ext(int label_id, char* name) {
+    is_reachable = 1; // Η επαναφορά γίνεται ΠΑΝΤΑ εδώ 
 
     Quad *q = malloc(sizeof(Quad));
     q->op = IR_LABEL;
     q->label_id = label_id;
     
-    if (func_sym) {
-        // Αποθήκευση ως OT_VAR για να μεταφερθεί το Symbol*
-        q->arg1.type = OT_VAR;
-        q->arg1.val.sym = func_sym;
+    if (name) {
+        q->arg1.type = OT_CONST_STR;
+        q->arg1.val.sval = strdup(name);
     } else {
         q->arg1 = make_operand_none();
     }
@@ -209,35 +207,19 @@ void ir_print() {
         str_curr = str_curr->next;
     }
 
-    // --- 2. Global Variables ---
-    extern HASHTBL *g_symtab;
-    if (g_symtab) {
-        for (hash_size i = 0; i < g_symtab->size; i++) {
-            struct hashnode_s *node = g_symtab->nodes[i];
-            while (node) {
-                Symbol *s = (Symbol *)node->data;
-                if (s->scope == 0 && s->kind == SYM_VAR) {
-                    printf("%s: %ld (Global)\n", s->name, s->u.c.ival);
-                }
-                node = node->next;
-            }
-        }
-    }
-
-    // --- 3. Code Section (Instructions) ---
+    // --- 2. Code Section (Instructions) ---
     printf("\n--- Code Section ---\n");
     Quad *curr = quad_head;
     while (curr) {
         if (curr->op == IR_LABEL) {
-            if (curr->label_id == -1) {
-                // Αν είναι OT_VAR, παίρνουμε το όνομα από το Symbol
-                if (curr->arg1.type == OT_VAR) {
-                    printf("\n%s:\n", curr->arg1.val.sym->name);
-                } else if (curr->arg1.type == OT_CONST_STR) {
-                    printf("\n%s:\n", curr->arg1.val.sval);
-                }
+            printf("L%d:", curr->label_id);
+            // Αν είναι συνάρτηση, τυπώνουμε και το όνομα για σαφήνεια
+            if (curr->arg1.type == OT_VAR) {
+                printf(" (%s)\n", curr->arg1.val.sym->name);
+            } else if (curr->arg1.type == OT_CONST_STR) {
+                printf(" (%s)\n", curr->arg1.val.sval);
             } else {
-                printf("L%d:\n", curr->label_id);
+                printf("\n");
             }
         } else {
             printf("\t");
@@ -369,26 +351,52 @@ IROp map_binary_op(ASTOp op) {
 }
 
 /* λιστα ορισμάτων για κλήση συνάρτησης */
-int gen_args(ASTNode *node) {
+/* Νέα gen_args που υποστηρίζει Pass-by-Reference */
+int gen_args(ASTNode *node, Symbol *func_sym, int *arg_idx) {
     if (!node) return 0;
 
     // Αν είναι κόμβος λίστας, πάμε αναδρομικά
     if (node->kind == AST_LIST) {
         int count = 0;
-        count += gen_args(node->u.list.head);
-        count += gen_args(node->u.list.tail);
+        count += gen_args(node->u.list.head, func_sym, arg_idx);
+        count += gen_args(node->u.list.tail, func_sym, arg_idx);
         return count;
     }
 
-    // Αν είναι expression (φύλλο του δέντρου λίστας)
-    IROperand op = codegen(node);
-    if (node->type && (node->type->kind == TYPE_ARRAY || node->type->kind == TYPE_CLASS)) {
-        int t_addr = new_temp();
-        IROperand addr_op = make_operand_temp(t_addr);
-        emit(IR_LOAD_ADDR, op, make_operand_none(), addr_op);
-        op = addr_op;
+    // Ελέγχουμε αν η συνάρτηση περιμένει Reference (&) σε αυτή τη θέση
+    int is_ref = 0;
+    if (func_sym && *arg_idx < func_sym->u.func.param_count) {
+        is_ref = func_sym->u.func.params[*arg_idx]->is_ref_param;
     }
 
+    IROperand op;
+    if (is_ref) {
+        // Αν είναι reference, στέλνουμε τη ΔΙΕΥΘΥΝΣΗ
+        if (node->kind == AST_VAR) {
+            int t_addr = new_temp();
+            IROperand addr_op = make_operand_temp(t_addr);
+            emit(IR_LOAD_ADDR, make_operand_var(node->u.var.sym), make_operand_none(), addr_op);
+            op = addr_op;
+        } else {
+            // Fallback για πίνακες/πεδία ή αν δεν είναι απλή μεταβλητή
+            op = codegen(node);
+        }
+    } else {
+        // Pass by Value (Κλασική περίπτωση)
+        op = codegen(node);
+        
+        // Arrays και Classes περνάνε πάντα ως pointers
+        if (node->type && (node->type->kind == TYPE_ARRAY || node->type->kind == TYPE_CLASS)) {
+             if (op.type == OT_VAR || op.type == OT_TEMP) {
+                int t_addr = new_temp();
+                IROperand addr_op = make_operand_temp(t_addr);
+                emit(IR_LOAD_ADDR, op, make_operand_none(), addr_op);
+                op = addr_op;
+             }
+        }
+    }
+
+    (*arg_idx)++; // Αυξάνουμε τον δείκτη ορίσματος
     emit(IR_PARAM, op, make_operand_none(), make_operand_none());
     return 1;
 }
@@ -793,12 +801,33 @@ IROperand codegen(ASTNode *node) {
         }
 
         // --- 9. Function Declaration ---
+        // --- 9. Function Declaration ---
+        // --- 9. Function Declaration ---
         case AST_FUNC_DECL: {
-            // Αναζήτηση του συμβόλου της συνάρτησης
-            Symbol *s = symtab_lookup(node->u.func_decl.name);
+            Symbol *func_sym = symtab_lookup(node->u.func_decl.name);
             
-            // Πέρασμα του συμβόλου αντί για το όνομα
-            emit_label_ext(-1, s);
+            Quad *q = malloc(sizeof(Quad));
+            q->op = IR_LABEL;
+            
+            // ΔΙΟΡΘΩΣΗ: Δίνουμε μοναδικό αυξανόμενο ID (π.χ. L1, L2...)
+            q->label_id = new_label(); 
+            
+            if (func_sym) {
+                q->arg1.type = OT_VAR;
+                q->arg1.val.sym = func_sym;
+            } else {
+                q->arg1.type = OT_CONST_STR;
+                q->arg1.val.sval = strdup(node->u.func_decl.name);
+            }
+            
+            q->arg2 = make_operand_none();
+            q->result = make_operand_none();
+            q->next = NULL;
+
+            if (!quad_head) { quad_head = q; quad_tail = q; }
+            else { quad_tail->next = q; quad_tail = q; }
+            
+            is_reachable = 1;
 
             codegen(node->u.func_decl.body);
             emit(IR_RETURN, make_operand_none(), make_operand_none(), make_operand_none());
@@ -822,16 +851,14 @@ IROperand codegen(ASTNode *node) {
             ASTNode *args_node = node->u.call.args;
             int arg_count = 0;
             char *func_name = NULL;
+            Symbol *target_func_sym = NULL;
 
-            // ΕΛΕΓΧΟΣ: Είναι μέθοδος (obj.method(...)) ή απλή συνάρτηση (func(...));
-            // Αν το func_node είναι AST_FIELD, τότε έχουμε κλήση μεθόδου!
+            // ΕΛΕΓΧΟΣ: Είναι μέθοδος (obj.method(...)) ή απλή συνάρτηση;
             if (func_node->kind == AST_FIELD) {
                 // 1. Παραγωγή κώδικα για το αντικείμενο (το "this")
                 ASTNode *base_obj = func_node->u.field.base;
                 IROperand this_addr;
 
-                // ΕΛΕΓΧΟΣ: Αν η βάση είναι το 'this', το περνάμε απευθείας. 
-                // Αλλιώς, παίρνουμε τη διεύθυνση του αντικειμένου (&obj).
                 if (base_obj->kind == AST_VAR && strcmp(base_obj->u.var.name, "this") == 0) {
                     this_addr = codegen(base_obj);
                 } else {
@@ -841,43 +868,47 @@ IROperand codegen(ASTNode *node) {
                     emit(IR_LOAD_ADDR, base_val, make_operand_none(), this_addr);
                 }
 
-                // 2. Περνάμε τη διεύθυνση του αντικειμένου ως την ΠΡΩΤΗ παράμετρο
                 emit(IR_PARAM, this_addr, make_operand_none(), make_operand_none());
                 arg_count++; 
 
-                // 3. Name Mangling: Σύνθεση ονόματος Class_Method
                 Symbol *method_sym = func_node->u.field.member;
+                target_func_sym = method_sym; // Κρατάμε το σύμβολο για έλεγχο παραμέτρων
+                
+                // Name Mangling
                 Type *cls_type = base_obj->type; 
                 char buffer[128];
                 if (cls_type && cls_type->enum_name) {
-                     sprintf(buffer, "%s_%s", cls_type->enum_name, method_sym->name);
+                    sprintf(buffer, "%s_%s", cls_type->enum_name, method_sym->name);
                 } else {
-                     sprintf(buffer, "_%s", method_sym->name);
+                    sprintf(buffer, "_%s", method_sym->name);
                 }
                 func_name = strdup(buffer);
             }
             else {
                 // Απλή συνάρτηση
                 if (func_node->kind == AST_VAR) {
-                    func_name = func_node->u.var.sym->name;
+                    target_func_sym = func_node->u.var.sym;
+                    func_name = target_func_sym->name;
                 } else {
-                    // Function pointer logic (skip for now)
                     func_name = "unknown_func";
                 }
             }
 
-            // 4. Παραγωγή υπόλοιπων ορισμάτων
-            arg_count += gen_args(args_node);
+            // 4. Παραγωγή ορισμάτων με έλεγχο Reference
+            int arg_idx_counter = 0;
+            // Αν είναι μέθοδος, το 1ο όρισμα είναι το 'this', άρα οι παράμετροι ξεκινάνε από 1 (αν τις μετράς μαζί)
+            // Στο symbol table όμως οι παράμετροι είναι stored χωρίς το this συνήθως.
+            // Εδώ υποθέτουμε ότι το arg_idx_counter ξεκινάει από 0 και αντιστοιχεί στα ορίσματα του AST.
+            
+            arg_count += gen_args(args_node, target_func_sym, &arg_idx_counter);
 
             // 5. Ετοιμασία αποτελέσματος
             int t = new_temp();
             IROperand result = make_operand_temp(t);
 
             // 6. Emit CALL
-            // Πρέπει να φτιάξουμε Operand για το όνομα (Label)
             IROperand func_op;
-            func_op.type = OT_VAR; // Χρησιμοποιούμε OT_VAR ή OT_LABEL για το όνομα
-            // Φτιάχνουμε ένα προσωρινό σύμβολο για να κρατήσει το όνομα (λίγο hacky αλλά δουλεύει στο print)
+            func_op.type = OT_VAR;
             Symbol *sym = malloc(sizeof(Symbol));
             sym->name = func_name;
             func_op.val.sym = sym;
@@ -886,7 +917,7 @@ IROperand codegen(ASTNode *node) {
 
             return result;
         }
-
+        
         // --- Array Access ---
         case AST_INDEX: {
             ASTNode *curr = node;
@@ -923,20 +954,43 @@ IROperand codegen(ASTNode *node) {
             return result;
         }
 
-        // --- Unary Operators (-, !) ---
+        // --- Unary Operators (-, !, ++, --) ---
         case AST_UNOP: {
             IROperand arg = codegen(node->u.unop.expr);
             int t = new_temp();
             IROperand result = make_operand_temp(t);
             
             if (node->u.unop.op == OP_SUB) {
-                // Unary Minus: t = -arg
                 emit(IR_NEG, arg, make_operand_none(), result);
+                return result;
             } else if (node->u.unop.op == OP_NOT) {
-                // Logical Not: t = !arg
                 emit(IR_NOT, arg, make_operand_none(), result);
+                return result;
+            } else if (node->u.unop.op == OP_PRE_INC) {
+                // ++x:  x = x + 1, επιστρέφει το νέο x
+                emit(IR_ADD, arg, make_operand_int(1), result); 
+                emit(IR_ASSIGN, result, make_operand_none(), arg); 
+                return arg; 
+            } else if (node->u.unop.op == OP_PRE_DEC) {
+                // --x:  x = x - 1, επιστρέφει το νέο x
+                emit(IR_SUB, arg, make_operand_int(1), result); 
+                emit(IR_ASSIGN, result, make_operand_none(), arg); 
+                return arg;
+            } else if (node->u.unop.op == OP_POST_INC) {
+                // x++: κρατάει παλιά τιμή στο result, x = x + 1
+                emit(IR_ASSIGN, arg, make_operand_none(), result); 
+                int t2 = new_temp();
+                emit(IR_ADD, arg, make_operand_int(1), make_operand_temp(t2));
+                emit(IR_ASSIGN, make_operand_temp(t2), make_operand_none(), arg);
+                return result; 
+            } else if (node->u.unop.op == OP_POST_DEC) {
+                // x--: κρατάει παλιά τιμή στο result, x = x - 1
+                emit(IR_ASSIGN, arg, make_operand_none(), result); 
+                int t2 = new_temp();
+                emit(IR_SUB, arg, make_operand_int(1), make_operand_temp(t2));
+                emit(IR_ASSIGN, make_operand_temp(t2), make_operand_none(), arg);
+                return result; 
             }
-            // Πρόσθεσε εδώ άλλα unary (π.χ. OP_PRE_INC) αν χρειάζεται
             return result;
         }
 
