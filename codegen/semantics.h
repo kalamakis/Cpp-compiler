@@ -123,6 +123,10 @@ void sem_enter_loop(void);
 void sem_leave_loop(void);
 void sem_check_break_continue(const char *op_name, int line);
 
+//Listfunc 
+static int analyze_list_func_name(const char *name);
+Type *sem_list_func(const char *name, Type *arg_type, int line); 
+
 // Frame / offsets (MIPS32)
 static long sem_sizeof_rec(Type *t, int line);
 
