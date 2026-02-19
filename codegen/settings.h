@@ -14,10 +14,18 @@
 #endif
 
 #ifndef HASHTBL_DEBUG
-#define HASHTBL_DEBUG               1
+#define HASHTBL_DEBUG               0
 #define HASHTBL_SHOW_INSERT         0
-#define HASHTBL_SHOW_GET            1
-#define HASHTBL_SHOW_GET_AS_TABLE   1
+#define HASHTBL_SHOW_GET            0
+#define HASHTBL_SHOW_GET_AS_TABLE   0
+#endif
+
+#ifndef AST_DEBUG                    
+#define AST_DEBUG                   0
+#endif
+
+#ifndef IR_DEBUG
+#define IR_DEBUG                    0
 #endif
 
 #endif

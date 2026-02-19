@@ -45,7 +45,7 @@ void symtab_enter_scope(void)
 
 void symtab_leave_scope(void)
 {
-    if(HASHTBL_SHOW_GET && HASHTBL_DEBUG) symtab_print();
+    if(HASHTBL_SHOW_GET && HASHTBL_DEBUG) {symtab_print();}
     hashtbl_remove_scope(g_symtab, current_scope, NULL);
     current_scope--;
 }

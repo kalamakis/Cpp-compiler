@@ -4,12 +4,14 @@
     #include "ast.h"
     #include "astinfo.h"
     #include "codegen.h"
+    #include <string.h>
 }
 
 %{
     #include <stdio.h>
     #include <stdlib.h>
     #include <string.h>
+    #include <ctype.h>
 
     #include "settings.h"
     #include "symbolTable.h" 
@@ -964,13 +966,15 @@ int main(int argc, char *argv[]){
     sem_check_undefined_prototypes();
 
     extern ASTNode *ast_root;
-    if (ast_root) {
+    if (ast_root && AST_DEBUG) {
        ast_print(ast_root, "ast.dot");
     }
     
     //--IR generation--
     codegen(ast_root);
-    ir_print();
+    if(IR_DEBUG){
+        ir_print();
+    }
 
     //--MIPS assembly generation--
     mips_init("out.asm");             // Δημιουργία αρχείου
