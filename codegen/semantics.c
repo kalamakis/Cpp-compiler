@@ -15,9 +15,6 @@
 
 static ParamInfo current_params[MAX_PARAMS];
 static int       current_param_count = 0;
-static Symbol *current_function_symbol = NULL;
-static int collecting_signature = 0;
-static int current_param_index = 0;
 
 //Loop scope
 static int loop_nesting_level = 0;

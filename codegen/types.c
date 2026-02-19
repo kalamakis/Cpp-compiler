@@ -2,6 +2,7 @@
 #include "symbol.h"
 #include "symbolTable.h"
 #include "error.h"
+#include <string.h>
 #include <stdlib.h>
 
 Type *type_int = NULL;

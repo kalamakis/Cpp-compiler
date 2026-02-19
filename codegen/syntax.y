@@ -31,11 +31,6 @@
     static char *current_function_name = NULL;
     static int in_param_context = 0;
 
-    //enum
-    static Type *current_enum_type = NULL;
-    static int current_enum_value = 0;
-    static EnumBuilder *current_enum_builder = NULL;
-
     /*class parsing state */
     static Type *current_class_type = NULL;
     static int   in_class_body = 0;

@@ -83,8 +83,9 @@ int hashtbl_insert(HASHTBL *hashtbl, const char *key, void *data ,int scope)
 	struct hashnode_s *node;
 	hash_size hash=hashtbl->hashfunc(key)%hashtbl->size;
 
-    if(HASHTBL_DEBUG && HASHTBL_SHOW_INSERT)
+    if(HASHTBL_DEBUG && HASHTBL_SHOW_INSERT){
         printf("HASHTBL_INSERT(): KEY = %s, HASH = %ld,  \tDATA = %s, SCOPE = %d\n", key, hash, (char*)data, scope);
+	}
 
 	node=hashtbl->nodes[hash];
 	while(node) {
