@@ -1,13 +1,12 @@
 # -------- Config --------
 CC      := gcc
-CFLAGS  :=-g
-CPPFLAGS:= -I.
+CFLAGS  :=-g 
+CPPFLAGS:= -I. 
 LDFLAGS :=
 LDLIBS  := -lfl
 
 TARGET  := parser
 
-# Your sources (adjust if you add/remove files)
 SRCS := \
   syntax.tab.c \
   lex.yy.c \
@@ -28,7 +27,7 @@ all: $(TARGET)
 
 # -------- Link --------
 $(TARGET): $(OBJS)
-	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@ 
 
 # -------- Compile (auto header deps) --------
 %.o: %.c
