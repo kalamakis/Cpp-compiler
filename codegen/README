@@ -1,0 +1,25 @@
+
+The code is split to 4 parts:
+  *SyntaxAnalysis   (flex, bison)
+  *semantics        (semantic checks for each rule)
+  *semantcs_ast     (semantic analysis with ast creation)
+  *codegen          (final code generation after ir creation from ast)
+
+In this README from onw on we will talk about codegen file
+Note that the previous files are not fully up to date. the final one is codegen
+
+the file settings.h is used for debugging pusrposes and can be used to enable printing functions
+    - FLEX_DEBUG on/off for flex
+        - specific debug options
+    - HASHTBL_DEBUG on/off      -- shows contents of symbol table
+        - specific debug options
+    - AST_DEBUG on/off          -- generates image of ast 
+    
+    - IR_DEBUG                  -- prints ir code (quatruplets)
+
+to compile  : make clean && make
+
+to run      : ./gcpp <input.cpp>
+
+output      : out.asm   -- contains assembly code --
+

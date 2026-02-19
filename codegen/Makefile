@@ -5,7 +5,7 @@ CPPFLAGS:= -I.
 LDFLAGS :=
 LDLIBS  := -lfl
 
-TARGET  := parser
+TARGET  := gcpp
 
 SRCS := \
   syntax.tab.c \
