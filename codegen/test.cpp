@@ -1,7 +1,17 @@
-int main(){
-   float k;
-   char mpampis;
+class takos {
+   public:
+      int gamato;
+      int foo1();
+};
 
-   k =2.0;
-   return k;
+int takos::foo1() {
+   return 1;
+}
+
+int main() {
+   int x;
+   takos my_class;
+   takos my_classs;
+
+   x = my_class.gamato; 
 }

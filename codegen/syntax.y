@@ -3,17 +3,19 @@
     #include "symbol.h"
     #include "ast.h"
     #include "astinfo.h"
+    #include "codegen.h"
 }
 
 %{
     #include <stdio.h>
     #include <stdlib.h>
+    #include <string.h>
 
     #include "settings.h"
     #include "symbolTable.h" 
     #include "semantics.h"
     #include "ir.h"
-
+    
     extern FILE *yyin;
     extern char *yytext;
     extern IROperand codegen(ASTNode *node);

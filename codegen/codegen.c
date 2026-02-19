@@ -1,1031 +1,941 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include "semantics.h"
 #include "ir.h"
-#include "ast.h"
+#include "symbol.h"
+#include "codegen.h"
+#include <string.h>
 
-/* --- Loop Label Stack --- */
-#define MAX_NESTED_LOOPS 50
+FILE *f_asm;
+static int needs_strcmp = 0;
+static int needs_strcat = 0;
 
-static int is_reachable = 1;
+// --- Register Allocation for Temps ---
+#define NUM_INT_REGS 7
+#define NUM_FLOAT_REGS 7
 
-static LoopLabels loop_stack[MAX_NESTED_LOOPS];
-static int loop_stack_top = -1;
+static const char* int_pool[NUM_INT_REGS] = {"$t3", "$t4", "$t5", "$t6", "$t7", "$t8", "$t9"};
+static const char* float_pool[NUM_FLOAT_REGS] = {"$f4", "$f5", "$f6", "$f7", "$f8", "$f9", "$f10"};
 
-void push_loop(int continue_lbl, int break_lbl) {
-    if (loop_stack_top >= MAX_NESTED_LOOPS - 1) {
-        fprintf(stderr, "Error: Loop nesting too deep\n");
+static int int_reg_used[NUM_INT_REGS] = {0};
+static int float_reg_used[NUM_FLOAT_REGS] = {0};
+
+// Δυναμικός χάρτης: Temp ID -> Assigned Register String
+static char **temp_location = NULL;
+static int temp_location_capacity = 0;
+
+// Συνάρτηση δέσμευσης καταχωρητή
+const char* allocate_reg(int temp_id, int is_float) {
+    // 1. Δυναμική επέκταση του χάρτη αν χρειάζεται
+    if (temp_id >= temp_location_capacity) {
+        int new_cap = temp_id + 100;
+        char **new_arr = realloc(temp_location, new_cap * sizeof(char*));
+        if (!new_arr) { perror("Memory allocation failed"); exit(1); }
+        memset(new_arr + temp_location_capacity, 0, (new_cap - temp_location_capacity) * sizeof(char*));
+        temp_location = new_arr;
+        temp_location_capacity = new_cap;
+    }
+
+    // 2. Επιστροφή υπάρχοντος (κρίσιμο για OP_AND / OP_OR short circuiting!)
+    if (temp_location[temp_id] != NULL) {
+        return temp_location[temp_id];
+    }
+
+    if (is_float) {
+        for (int i = 0; i < NUM_FLOAT_REGS; i++) {
+            if (!float_reg_used[i]) {
+                float_reg_used[i] = 1;
+                temp_location[temp_id] = (char*)float_pool[i];
+                return float_pool[i];
+            }
+        }
+    } else {
+        for (int i = 0; i < NUM_INT_REGS; i++) {
+            if (!int_reg_used[i]) {
+                int_reg_used[i] = 1;
+                temp_location[temp_id] = (char*)int_pool[i];
+                return int_pool[i];
+            }
+        }
+    }
+    
+    return NULL;
+}
+
+// Συνάρτηση απελευθέρωσης (καλείται μόλις διαβαστεί ένα temp)
+void free_temp_reg(int temp_id) {
+    if (temp_id >= temp_location_capacity) return;
+    char* reg = temp_location[temp_id];
+    if (!reg) return; // Ήταν spill στη μνήμη
+
+    for (int i = 0; i < NUM_INT_REGS; i++) {
+        if (strcmp(reg, int_pool[i]) == 0) { int_reg_used[i] = 0; break; }
+    }
+    for (int i = 0; i < NUM_FLOAT_REGS; i++) {
+        if (strcmp(reg, float_pool[i]) == 0) { float_reg_used[i] = 0; break; }
+    }
+    temp_location[temp_id] = NULL; // Το διαγράφουμε από τον χάρτη
+}
+
+// --- phase 0: Initialization ---
+
+void mips_init(const char *filename) {
+    f_asm = fopen(filename, "w");
+    if (!f_asm) {
+        perror("Cannot create assembly file");
         exit(1);
     }
-    loop_stack_top++;
-    loop_stack[loop_stack_top].continue_label = continue_lbl;
-    loop_stack[loop_stack_top].break_label = break_lbl;
 }
 
-void pop_loop() {
-    if (loop_stack_top < 0) {
-        fprintf(stderr, "Error: Loop stack underflow (break/continue outside loop?)\n");
-        // Δεν κάνουμε exit απαραίτητα, αλλά είναι bug του parser/semantics αν συμβεί
-        return;
-    }
-    loop_stack_top--;
-}
-
-int get_current_break_label() {
-    if (loop_stack_top < 0) return -1; // Error
-    return loop_stack[loop_stack_top].break_label;
-}
-
-int get_current_continue_label() {
-    if (loop_stack_top < 0) return -1; // Error
-    return loop_stack[loop_stack_top].continue_label;
-}
-
-/* --- String Literals Management --- */
-StringLiteral *string_head = NULL;
-StringLiteral *string_tail = NULL;
-static int string_counter = 0;
-
-Quad *quad_head = NULL;
-Quad *quad_tail = NULL;
-
-/* Προσθέτει ένα string στη λίστα και επιστρέφει το ID του */
-int add_string_literal(const char *str) {
-    // Ψάχνουμε αν υπάρχει ήδη (optimization: string interning)
-    StringLiteral *curr = string_head;
-    while (curr) {
-        if (strcmp(curr->value, str) == 0) {
-            return curr->id;
-        }
-        curr = curr->next;
-    }
-
-    // Αν δεν υπάρχει, φτιάχνουμε νέο
-    StringLiteral *new_str = malloc(sizeof(StringLiteral));
-    new_str->id = ++string_counter;
-    new_str->value = strdup(str);
-    new_str->next = NULL;
-
-    if (!string_head) {
-        string_head = new_str;
-        string_tail = new_str;
-    } else {
-        string_tail->next = new_str;
-        string_tail = new_str;
-    }
-
-    return new_str->id;
-}
-
-/* Μετρητές για Temps και Labels */
-static int temp_counter = 0;
-static int label_counter = 0;
-
-IROperand make_operand_var(Symbol *s) {
-    IROperand op;
-    op.type = OT_VAR;
-    op.val.sym = s;
-    return op;
-}
-
-IROperand make_operand_int(int v) {
-    IROperand op;
-    op.type = OT_CONST_INT;
-    op.val.ival = v;
-    return op;
-}
-
-IROperand make_operand_temp(int temp_id) {
-    IROperand op;
-    op.type = OT_TEMP;
-    op.val.ival = temp_id;
-    return op;
-}
-
-IROperand make_operand_label(int label_id) {
-    IROperand op;
-    op.type = OT_LABEL;
-    op.val.ival = label_id;
-    return op;
-}
-
-IROperand make_operand_none() {
-    IROperand op;
-    op.type = OT_NONE;
-    return op;
-}
-
-/* Δημιουργία νέας προσωρινής μεταβλητής (t1, t2...) */
-int new_temp() {
-    return ++temp_counter;
-}
-
-/* Δημιουργία νέου label (L1, L2...) */
-int new_label() {
-    return ++label_counter;
-}
-
-/* Προσθήκη εντολής (Quad) στη λίστα */
-void emit(IROp op, IROperand arg1, IROperand arg2, IROperand result) {
-    // Αν η σημαία είναι 0, αγνοούμε την παραγωγή της εντολής
-    if (!is_reachable) return;
-
-    Quad *q = malloc(sizeof(Quad));
-    q->op = op;
-    q->arg1 = arg1;
-    q->arg2 = arg2;
-    q->result = result;
-    q->next = NULL;
-
-    if (!quad_head) {
-        quad_head = q;
-        quad_tail = q;
-    } else {
-        quad_tail->next = q;
-        quad_tail = q;
-    }
-
-    // Αν η εντολή είναι GOTO ή RETURN, ο κώδικας που ακολουθεί είναι νεκρός
-    if (op == IR_GOTO || op == IR_RETURN) {
-        is_reachable = 0;
-    }
-}
-
-// Νέα, ενιαία συνάρτηση για labels (αριθμητικά ή ονομαστικά)
-void emit_label_ext(int label_id, char* name) {
-    is_reachable = 1; // Η επαναφορά γίνεται ΠΑΝΤΑ εδώ 
-
-    Quad *q = malloc(sizeof(Quad));
-    q->op = IR_LABEL;
-    q->label_id = label_id;
+void mips_data_section() {
+    fprintf(f_asm, ".data\n");
+    fprintf(f_asm, "newline: .asciiz \"\\n\"\n");
     
-    if (name) {
-        q->arg1.type = OT_CONST_STR;
-        q->arg1.val.sval = strdup(name);
-    } else {
-        q->arg1 = make_operand_none();
+    extern StringLiteral *string_head; 
+    StringLiteral *curr_str = string_head;
+    while (curr_str) {
+        fprintf(f_asm, "_str_%d: .asciiz \"%s\"\n", curr_str->id, curr_str->value);
+        curr_str = curr_str->next;
     }
     
-    q->arg2 = make_operand_none();
-    q->result = make_operand_none();
-    q->next = NULL;
-
-    if (!quad_head) { quad_head = q; quad_tail = q; }
-    else { quad_tail->next = q; quad_tail = q; }
-}
-
-// Διατηρούμε την παλιά για συμβατότητα με τα loops/if
-void emit_label(int label_id) {
-    emit_label_ext(label_id, NULL);
-}
-
-void print_operand(IROperand op) {
-    switch(op.type) {
-        case OT_VAR: printf("%s", op.val.sym->name); break;
-        case OT_CONST_INT: printf("%d", op.val.ival); break;
-        case OT_CONST_FLOAT: printf("%.2f", op.val.fval); break;
-        case OT_CONST_CHAR: printf("'%c'", op.val.cval); break;
-        
-        // ΝΕΟ: Υποστήριξη για Strings (Labels)
-        case OT_CONST_STR: printf("%s", op.val.sval); break; 
-        
-        case OT_TEMP: printf("_t%d", op.val.ival); break;
-        case OT_LABEL: printf("L%d", op.val.ival); break;
-        case OT_NONE: break;
-        default: printf("?");
-    }
-}
-
-void ir_print() {
-    // --- 1. Data Section (Strings) ---
-    printf("\n--- Data Section ---\n");
-    StringLiteral *str_curr = string_head;
-    while (str_curr) {
-        // Τυπώνουμε: _str_1: "Hello World"
-        printf("_str_%d: \"%s\"\n", str_curr->id, str_curr->value);
-        str_curr = str_curr->next;
-    }
-
-    // --- 2. Code Section (Instructions) ---
-    printf("\n--- Code Section ---\n");
+    fprintf(f_asm, "\n# --- Global Variables ---\n");
+    const char *emitted_globals[500]; // Κρατάμε ποια τυπώσαμε για αποφυγή διπλοεγγραφών
+    int eg_count = 0;
+    
     Quad *curr = quad_head;
     while (curr) {
-        if (curr->op == IR_LABEL) {
-            printf("L%d:", curr->label_id);
-            // Αν είναι συνάρτηση, τυπώνουμε και το όνομα για σαφήνεια
-            if (curr->arg1.type == OT_VAR) {
-                printf(" (%s)\n", curr->arg1.val.sym->name);
-            } else if (curr->arg1.type == OT_CONST_STR) {
-                printf(" (%s)\n", curr->arg1.val.sval);
-            } else {
-                printf("\n");
+        IROperand ops[3] = {curr->arg1, curr->arg2, curr->result};
+        for (int k = 0; k < 3; k++) {
+            if (is_global(ops[k])) {
+                Symbol *sym = ops[k].val.sym;
+                int already_emitted = 0;
+                for (int i = 0; i < eg_count; i++) {
+                    if (strcmp(emitted_globals[i], sym->name) == 0) { already_emitted = 1; break; }
+                }
+                if (!already_emitted) {
+                    emitted_globals[eg_count++] = sym->name;
+                    int size = sem_sizeof_bytes(sym->type, 0);
+                    if (size < 4) size = 4; // Word alignment
+                    fprintf(f_asm, "_%s: .space %d\n", sym->name, size);
+                }
             }
-        } else {
-            printf("\t");
-            
-            int is_assignment = (curr->result.type != OT_NONE) && 
-                                (curr->op != IR_SET_INDEX) && 
-                                (curr->op != IR_SET_FIELD) &&
-                                (curr->op != IR_IF_FALSE) &&
-                                (curr->op != IR_GOTO) &&
-                                (curr->op != IR_READ) &&
-                                (curr->op != IR_PRINT) &&
-                                (curr->op != IR_PARAM) &&
-                                (curr->op != IR_RETURN) &&
-                                (curr->op != IR_CALL); 
-
-            if (curr->op == IR_CALL && curr->result.type != OT_NONE) {
-                is_assignment = 1;
-            }
-
-            if (is_assignment) {
-                print_operand(curr->result);
-                printf(" = ");
-            }
-            
-            switch(curr->op) {
-                case IR_ADD: print_operand(curr->arg1); printf(" + "); print_operand(curr->arg2); break;
-                case IR_SUB: print_operand(curr->arg1); printf(" - "); print_operand(curr->arg2); break;
-                case IR_MUL: print_operand(curr->arg1); printf(" * "); print_operand(curr->arg2); break;
-                case IR_DIV: print_operand(curr->arg1); printf(" / "); print_operand(curr->arg2); break;
-                case IR_MOD: print_operand(curr->arg1); printf(" %% "); print_operand(curr->arg2); break;
-                
-                case IR_EQ: print_operand(curr->arg1); printf(" == "); print_operand(curr->arg2); break;
-                case IR_NE: print_operand(curr->arg1); printf(" != "); print_operand(curr->arg2); break;
-                case IR_GT: print_operand(curr->arg1); printf(" > "); print_operand(curr->arg2); break;
-                case IR_LT: print_operand(curr->arg1); printf(" < "); print_operand(curr->arg2); break;
-                case IR_GE: print_operand(curr->arg1); printf(" >= "); print_operand(curr->arg2); break;
-                case IR_LE: print_operand(curr->arg1); printf(" <= "); print_operand(curr->arg2); break;
-
-                case IR_AND: print_operand(curr->arg1); printf(" && "); print_operand(curr->arg2); break;
-                case IR_OR:  print_operand(curr->arg1); printf(" || "); print_operand(curr->arg2); break;
-                
-                case IR_NEG: printf("-"); print_operand(curr->arg1); break;
-                case IR_NOT: printf("!"); print_operand(curr->arg1); break;
-
-                case IR_ASSIGN: print_operand(curr->arg1); break;
-                case IR_CVT_I2F: printf("(float) "); print_operand(curr->arg1); break;
-                case IR_CVT_F2I: printf("(int) "); print_operand(curr->arg1); break;
-                case IR_IF_FALSE: 
-                    printf("ifFalse "); 
-                    print_operand(curr->arg1); 
-                    printf(" GOTO "); 
-                    print_operand(curr->arg2); 
-                    break;
-                
-                case IR_GOTO: 
-                    printf("GOTO "); 
-                    print_operand(curr->arg1); 
-                    break;
-
-                case IR_PARAM: printf("param "); print_operand(curr->arg1); break;
-                
-                case IR_CALL: 
-                    printf("call "); 
-                    print_operand(curr->arg1); 
-                    printf(", "); 
-                    print_operand(curr->arg2); 
-                    break;
-                    
-                case IR_RETURN: 
-                    printf("return "); 
-                    if (curr->arg1.type != OT_NONE) print_operand(curr->arg1);
-                    break;
-
-                case IR_PRINT: printf("PRINT "); print_operand(curr->arg1); break;
-                case IR_READ:  printf("READ ");  print_operand(curr->result); break;
-
-                case IR_INDEX:     
-                    print_operand(curr->arg1); 
-                    printf("["); 
-                    print_operand(curr->arg2); 
-                    printf("]"); 
-                    break; 
-
-                case IR_SET_INDEX: 
-                    print_operand(curr->result); 
-                    printf("["); 
-                    print_operand(curr->arg1);   
-                    printf("] = "); 
-                    print_operand(curr->arg2);   
-                    break;
-
-                case IR_LOAD_ADDR:
-                    printf("&"); // Σύμβολο διεύθυνσης
-                    print_operand(curr->arg1);
-                    break;
-
-                case IR_GET_FIELD: 
-                    print_operand(curr->arg1); printf(".(+%d)", curr->arg2.val.ival); break;
-                case IR_SET_FIELD: 
-                    print_operand(curr->arg1); printf(".(+%d) = ", curr->arg2.val.ival); print_operand(curr->result); break;
-
-                default: printf(" (unknown op) ");
-            }
-            printf("\n");
         }
         curr = curr->next;
     }
-    printf("------------------------------\n");
+    fprintf(f_asm, "\n");
 }
 
-// Βοηθητική για να μετατρέπουμε AST Ops σε IR Ops
-IROp map_binary_op(ASTOp op) {
-    switch(op) {
-        case OP_ADD: return IR_ADD;
-        case OP_SUB: return IR_SUB;
-        case OP_MUL: return IR_MUL;
-        case OP_DIV: return IR_DIV;
-        case OP_MOD: return IR_MOD;
-        case OP_EQ:  return IR_EQ;
-        case OP_NE:  return IR_NE;
-        case OP_GT:  return IR_GT;
-        case OP_LT:  return IR_LT;
-        case OP_GE:  return IR_GE;
-        case OP_LE:  return IR_LE;
-        case OP_AND: return IR_AND;
-        case OP_OR:  return IR_OR;
-        default:     return IR_ADD; // Fallback (ή error)
+void mips_finish() {
+    if (f_asm) {
+        fprintf(f_asm, "\n# Exit program\n");
+        fprintf(f_asm, "\tli $v0, 10\n\tsyscall\n");
+        
+        // --- Τυπώνεται ΜΟΝΟ αν χρησιμοποιήθηκε σύγκριση strings ---
+        if (needs_strcmp) {
+            fprintf(f_asm, "\n# Built-in strcmp (a0=str1, a1=str2, v0=result)\n");
+            fprintf(f_asm, "_strcmp:\n");
+            fprintf(f_asm, "1:\tlbu $t0, 0($a0)\n\tlbu $t1, 0($a1)\n");
+            fprintf(f_asm, "\tbne $t0, $t1, 2f\n\tbeq $t0, $zero, 3f\n");
+            fprintf(f_asm, "\taddiu $a0, $a0, 1\n\taddiu $a1, $a1, 1\n\tj 1b\n");
+            fprintf(f_asm, "2:\tsub $v0, $t0, $t1\n\tjr $ra\n");
+            fprintf(f_asm, "3:\tli $v0, 0\n\tjr $ra\n");
+        }
+
+        // --- Τυπώνεται ΜΟΝΟ αν χρησιμοποιήθηκε ένωση strings (+) ---
+        if (needs_strcat) {
+            fprintf(f_asm, "\n# Built-in strcat (a0=dest, a1=src1, a2=src2)\n");
+            fprintf(f_asm, "_strcat:\n\tmove $t0, $a0\n");
+            fprintf(f_asm, "1:\tlbu $t1, 0($a1)\n\tbeq $t1, $zero, 2f\n");
+            fprintf(f_asm, "\tsb $t1, 0($t0)\n\taddiu $a1, $a1, 1\n\taddiu $t0, $t0, 1\n\tj 1b\n");
+            fprintf(f_asm, "2:\tlbu $t1, 0($a2)\n\tsb $t1, 0($t0)\n");
+            fprintf(f_asm, "\tbeq $t1, $zero, 3f\n\taddiu $a2, $a2, 1\n\taddiu $t0, $t0, 1\n\tj 2b\n");
+            fprintf(f_asm, "3:\tjr $ra\n");
+        }
+
+        fclose(f_asm);
     }
 }
 
-/* λιστα ορισμάτων για κλήση συνάρτησης */
-/* Νέα gen_args που υποστηρίζει Pass-by-Reference */
-int gen_args(ASTNode *node, Symbol *func_sym, int *arg_idx) {
-    if (!node) return 0;
+// --- phase 1: Διαχείριση Μνήμης & Temps ---
 
-    // Αν είναι κόμβος λίστας, πάμε αναδρομικά
-    if (node->kind == AST_LIST) {
-        int count = 0;
-        count += gen_args(node->u.list.head, func_sym, arg_idx);
-        count += gen_args(node->u.list.tail, func_sym, arg_idx);
-        return count;
+static int current_local_size = 0;
+
+int get_mips_offset(IROperand op) {
+    if (op.type == OT_VAR) {
+        return op.val.sym->offset; 
     }
-
-    // Ελέγχουμε αν η συνάρτηση περιμένει Reference (&) σε αυτή τη θέση
-    int is_ref = 0;
-    if (func_sym && *arg_idx < func_sym->u.func.param_count) {
-        is_ref = func_sym->u.func.params[*arg_idx]->is_ref_param;
+    if (op.type == OT_TEMP) {
+        return -(current_local_size + 8 + (op.val.ival * 4)); 
     }
+    return 0;
+}
 
-    IROperand op;
-    if (is_ref) {
-        // Αν είναι reference, στέλνουμε τη ΔΙΕΥΘΥΝΣΗ
-        if (node->kind == AST_VAR) {
-            int t_addr = new_temp();
-            IROperand addr_op = make_operand_temp(t_addr);
-            emit(IR_LOAD_ADDR, make_operand_var(node->u.var.sym), make_operand_none(), addr_op);
-            op = addr_op;
+int is_global(IROperand op) {
+    if (op.type == OT_VAR && op.val.sym->scope == 0) return 1;
+    return 0;
+}
+
+// --- Prologue/Epilogue ---
+
+void mips_prologue(const char *func_name, int local_size) {
+    fprintf(f_asm, "\n# --- Prologue for %s ---\n", func_name);
+    fprintf(f_asm, "%s:\n", func_name);
+    int total_stack = local_size + 64; // Αυξημένος χώρος για ασφάλεια (floats κλπ)
+    fprintf(f_asm, "\taddiu $sp, $sp, -%d\n", total_stack);
+    fprintf(f_asm, "\tsw $ra, %d($sp)\n", total_stack - 4);
+    fprintf(f_asm, "\tsw $fp, %d($sp)\n", total_stack - 8);
+    fprintf(f_asm, "\taddiu $fp, $sp, %d\n", total_stack - 8);
+}
+
+void mips_epilogue(int local_size) {
+    int total_stack = local_size + 64;
+    fprintf(f_asm, "\n# --- Epilogue ---\n");
+    fprintf(f_asm, "\tlw $ra, %d($sp)\n", total_stack - 4);
+    fprintf(f_asm, "\tlw $fp, %d($sp)\n", total_stack - 8);
+    fprintf(f_asm, "\taddiu $sp, $sp, %d\n", total_stack);
+    fprintf(f_asm, "\tjr $ra\n");
+}
+
+// --- Load/Store Helpers ---
+
+// Φόρτωση σε Integer Register
+void load_to_reg(IROperand op, const char *reg) {
+    if (op.type == OT_CONST_INT) {
+        fprintf(f_asm, "\tli %s, %d\n", reg, op.val.ival);
+    } else if (op.type == OT_CONST_CHAR) {
+        fprintf(f_asm, "\tli %s, %d\n", reg, (int)op.val.cval);
+    } else if (op.type == OT_CONST_STR) {
+        fprintf(f_asm, "\tla %s, %s\n", reg, op.val.sval);
+    } else if (op.type == OT_TEMP) {
+        char* mapped_reg = (op.val.ival < temp_location_capacity) ? temp_location[op.val.ival] : NULL;
+        if (mapped_reg) {
+            fprintf(f_asm, "\tmove %s, %s\n", reg, mapped_reg); // Ταχύτατο Register-to-Register!
+            free_temp_reg(op.val.ival); // Απελευθέρωση για επόμενη χρήση
         } else {
-            // Fallback για πίνακες/πεδία ή αν δεν είναι απλή μεταβλητή
-            op = codegen(node);
+            fprintf(f_asm, "\tlw %s, %d($fp)\n", reg, get_mips_offset(op)); // Fallback σε Spilled memory
         }
-    } else {
-        // Pass by Value (Κλασική περίπτωση)
-        op = codegen(node);
-        
-        // Arrays και Classes περνάνε πάντα ως pointers
-        if (node->type && (node->type->kind == TYPE_ARRAY || node->type->kind == TYPE_CLASS)) {
-             if (op.type == OT_VAR || op.type == OT_TEMP) {
-                int t_addr = new_temp();
-                IROperand addr_op = make_operand_temp(t_addr);
-                emit(IR_LOAD_ADDR, op, make_operand_none(), addr_op);
-                op = addr_op;
-             }
-        }
+    } else if (op.type == OT_VAR) {
+        if (is_global(op)) fprintf(f_asm, "\tlw %s, _%s\n", reg, op.val.sym->name);
+        else fprintf(f_asm, "\tlw %s, %d($fp)\n", reg, get_mips_offset(op));
     }
-
-    (*arg_idx)++; // Αυξάνουμε τον δείκτη ορίσματος
-    emit(IR_PARAM, op, make_operand_none(), make_operand_none());
-    return 1;
 }
 
-// Η κύρια αναδρομική συνάρτηση
-IROperand codegen(ASTNode *node) {
-    if (!node) return make_operand_none();
-
-    switch (node->kind) {
-        // --- 1. Σταθερές ---
-        case AST_CONST: {
-            // Ελέγχουμε τον τύπο της σταθεράς (int, float, char...)
-            // Εδώ υποθέτουμε ότι το AST node έχει τα πεδία στο union
-            if (node->type == type_int) {
-                return make_operand_int(node->u.constant.ival);
-            } else if (node->type == type_float) {
-                IROperand op; 
-                op.type = OT_CONST_FLOAT; 
-                op.val.fval = node->u.constant.fval; 
-                return op;
-            } else if (node->type == type_char) {
-                IROperand op; op.type = OT_CONST_CHAR; op.val.cval = node->u.constant.cval; return op;
-            } else if (node->type == type_string) {
-                // Καταχωρούμε το string και παίρνουμε πίσω το ID (π.χ. 1 για το _str_1)
-                int str_id = add_string_literal(node->u.constant.sval);
-
-                IROperand op;
-                op.type = OT_CONST_STR; 
-                // Φτιάχνουμε το όνομα του label: _str_1, _str_2, ...
-                char buffer[32];
-                sprintf(buffer, "_str_%d", str_id);
-                op.val.sval = strdup(buffer); 
-                return op;
-            }
-            return make_operand_int(0); // Fallback
+// Φόρτωση σε Float Register ($f0-$f12)
+void load_to_freg(IROperand op, const char *reg) {
+    if (op.type == OT_CONST_FLOAT) {
+        fprintf(f_asm, "\tli.s %s, %.6f\n", reg, op.val.fval);
+    } else if (op.type == OT_TEMP) {
+        char* mapped_reg = (op.val.ival < temp_location_capacity) ? temp_location[op.val.ival] : NULL;
+        if (mapped_reg) {
+            fprintf(f_asm, "\tmov.s %s, %s\n", reg, mapped_reg); 
+            free_temp_reg(op.val.ival);
+        } else {
+            fprintf(f_asm, "\tl.s %s, %d($fp)\n", reg, get_mips_offset(op));
         }
+    } else if (op.type == OT_VAR) {
+        if (is_global(op)) fprintf(f_asm, "\tl.s %s, _%s\n", reg, op.val.sym->name);
+        else fprintf(f_asm, "\tl.s %s, %d($fp)\n", reg, get_mips_offset(op));
+    } else if (op.type == OT_CONST_INT) {
+        fprintf(f_asm, "\tli $t9, %d\n", op.val.ival);
+        fprintf(f_asm, "\tmtc1 $t9, %s\n", reg);
+        fprintf(f_asm, "\tcvt.s.w %s, %s\n", reg, reg);
+    }
+}
 
-        // --- 2. Μεταβλητές ---
-        case AST_VAR: {
-            Symbol *s = node->u.var.sym;
-            
-            // Αν το σύμβολο είναι σταθερά Enum, επέστρεψε την τιμή του ως Integer Literal
-            if (s->kind == SYM_ENUM_CONST) {
-                return make_operand_int(s->u.enum_const.value);
-            }
-
-            // Διαφορετικά, επέστρεψε την κανονική μεταβλητή
-            return make_operand_var(s);
+// Φόρτωση Διεύθυνσης μνήμης στον register (κρίσιμο για Strings)
+void load_addr_to_reg(IROperand op, const char *reg) {
+    if (op.type == OT_CONST_STR) {
+        fprintf(f_asm, "\tla %s, %s\n", reg, op.val.sval);
+    } else if (op.type == OT_VAR) {
+        if (is_global(op)) fprintf(f_asm, "\tla %s, _%s\n", reg, op.val.sym->name);
+        else fprintf(f_asm, "\taddiu %s, $fp, %d\n", reg, get_mips_offset(op));
+    } else if (op.type == OT_TEMP) {
+        char* mapped_reg = (op.val.ival < temp_location_capacity) ? temp_location[op.val.ival] : NULL;
+        if (mapped_reg) {
+            fprintf(f_asm, "\tmove %s, %s\n", reg, mapped_reg);
+            free_temp_reg(op.val.ival);
+        } else {
+            fprintf(f_asm, "\tlw %s, %d($fp)\n", reg, get_mips_offset(op));
         }
+    }
+}
 
-        // --- 3. Binary Operations ---
-        case AST_BINOP: {
-            // Περίπτωση Short-Circuit AND (expr1 && expr2)
-            if (node->u.binop.op == OP_AND) {
-                int L_end = new_label();
-                int t = new_temp();
-                IROperand result = make_operand_temp(t);
+// Αποθήκευση αποτελέσματος (Int ή Float)
 
-                // Αρχικοποίηση αποτελέσματος σε 0 (False)
-                emit(IR_ASSIGN, make_operand_int(0), make_operand_none(), result);
-
-                // Αριστερό μέρος
-                IROperand left = codegen(node->u.binop.left);
-                // Αν αριστερό False, πήγαινε στο τέλος (το result μένει 0)
-                emit(IR_IF_FALSE, left, make_operand_label(L_end), make_operand_none());
-
-                // Δεξί μέρος (εκτελείται μόνο αν αριστερό True)
-                IROperand right = codegen(node->u.binop.right);
-                // Αν δεξί False, πήγαινε στο τέλος (το result μένει 0)
-                emit(IR_IF_FALSE, right, make_operand_label(L_end), make_operand_none());
-
-                // Αν φτάσαμε εδώ, και τα δύο είναι True
-                emit(IR_ASSIGN, make_operand_int(1), make_operand_none(), result);
-
-                emit_label(L_end);
-                return result;
-            }
-
-            // Περίπτωση Short-Circuit OR (expr1 || expr2)
-            else if (node->u.binop.op == OP_OR) {
-                int L_true = new_label(); // Label για να θέσουμε 1
-                int L_end  = new_label();
-                int t = new_temp();
-                IROperand result = make_operand_temp(t);
-
-                // Αρχικοποίηση αποτελέσματος σε 0
-                emit(IR_ASSIGN, make_operand_int(0), make_operand_none(), result);
-
-                // Αριστερό μέρος
-                IROperand left = codegen(node->u.binop.left);
-                // Αν το αριστερό είναι FALSE, πρέπει να ελέγξουμε το δεξί.
-                // ΑΡΑ: Αν το αριστερό είναι TRUE, τελειώσαμε -> GOTO L_true.
-                // Επειδή έχουμε μόνο ifFalse, κάνουμε το ανάποδο:
-                // ifFalse left GOTO L_check_right
-                // GOTO L_true
-                int L_check_right = new_label();
-                
-                emit(IR_IF_FALSE, left, make_operand_label(L_check_right), make_operand_none());
-                emit(IR_GOTO, make_operand_label(L_true), make_operand_none(), make_operand_none());
-
-                emit_label(L_check_right);
-                IROperand right = codegen(node->u.binop.right);
-                emit(IR_IF_FALSE, right, make_operand_label(L_end), make_operand_none());
-                
-                emit_label(L_true);
-                emit(IR_ASSIGN, make_operand_int(1), make_operand_none(), result);
-
-                emit_label(L_end);
-                return result;
-            }
-
-            // --- Κανονικές Αριθμητικές Πράξεις (+, -, *, <, > ...) ---
-            // --- Κανονικές Αριθμητικές Πράξεις (+, -, *, <, > ...) ---
-            else {
-                IROperand left = codegen(node->u.binop.left);
-                IROperand right = codegen(node->u.binop.right);
-                
-                Type *t_left = node->u.binop.left->type;
-                Type *t_right = node->u.binop.right->type;
-
-                // Implicit Casting: Μετατροπή αν ένας είναι float και ο άλλος int
-                if (t_left == type_int && t_right == type_float) {
-                    int t_new = new_temp();
-                    IROperand cast_res = make_operand_temp(t_new);
-                    emit(IR_CVT_I2F, left, make_operand_none(), cast_res);
-                    left = cast_res;
-                }
-                else if (t_left == type_float && t_right == type_int) {
-                    int t_new = new_temp();
-                    IROperand cast_res = make_operand_temp(t_new);
-                    emit(IR_CVT_I2F, right, make_operand_none(), cast_res);
-                    right = cast_res;
-                }
-
-                int t = new_temp();
-                IROperand result = make_operand_temp(t);
-                IROp op = map_binary_op(node->u.binop.op);
-                emit(op, left, right, result);
-                return result;
-            }
+void store_result(IROperand res, const char *reg, int is_float) {
+    if (res.type == OT_NONE) return;
+    
+    // --- REGISTER ALLOCATION ΓΙΑ TEMPS ---
+    if (res.type == OT_TEMP) {
+        const char* allocated_reg = allocate_reg(res.val.ival, is_float);
+        if (allocated_reg) {
+            // Βρήκαμε ελεύθερο καταχωρητή!
+            if (is_float) fprintf(f_asm, "\tmov.s %s, %s\n", allocated_reg, reg);
+            else fprintf(f_asm, "\tmove %s, %s\n", allocated_reg, reg);
+            return; // Τέλος, παρακάμπτουμε το γράψιμο στη μνήμη
         }
-
-        // --- 4. Assignment ---
-        case AST_ASSIGN: {
-            ASTNode *lhs = node->u.assign.lhs;
-            IROperand rhs_val = codegen(node->u.assign.rhs);
-            
-            Type *t_lhs = lhs->type;
-            Type *t_rhs = node->u.assign.rhs->type;
-
-            // Εφαρμογή Οδηγίας (β): Αριθμητική συμβατότητα
-            // 1. int σε float (μετατροπή σε πραγματικό)
-            if (t_lhs == type_float && t_rhs == type_int) {
-                int t_new = new_temp();
-                IROperand cast_res = make_operand_temp(t_new);
-                emit(IR_CVT_I2F, rhs_val, make_operand_none(), cast_res);
-                rhs_val = cast_res;
-            }
-            // 2. float σε int (αποκοπή κλασματικού μέρους)
-            else if (t_lhs == type_int && t_rhs == type_float) {
-                int t_new = new_temp();
-                IROperand cast_res = make_operand_temp(t_new);
-                emit(IR_CVT_F2I, rhs_val, make_operand_none(), cast_res);
-                rhs_val = cast_res;
-            }
-
-            if (lhs->kind == AST_FIELD) {
-                ASTNode *base_node = lhs->u.field.base;
-                IROperand base_addr;
-
-                // ΕΛΕΓΧΟΣ: Αν η βάση είναι το 'this', είναι ήδη διεύθυνση
-                if (base_node->kind == AST_VAR && strcmp(base_node->u.var.name, "this") == 0) {
-                    base_addr = codegen(base_node);
-                } else {
-                    IROperand base_val = codegen(base_node);
-                    int t_addr = new_temp();
-                    base_addr = make_operand_temp(t_addr);
-                    emit(IR_LOAD_ADDR, base_val, make_operand_none(), base_addr);
-                }
-
-                int offset = lhs->u.field.member->offset;
-                emit(IR_SET_FIELD, base_addr, make_operand_int(offset), rhs_val);
-                return rhs_val;
-            }
-
-            if (lhs->kind == AST_VAR) {
-                IROperand lhs_op = make_operand_var(lhs->u.var.sym);
-                emit(IR_ASSIGN, rhs_val, make_operand_none(), lhs_op);
-                return lhs_op;
-            } 
-            else if (lhs->kind == AST_INDEX) {
-                // Λογική Πολλαπλών Διαστάσεων (Linearization)
-                // A[i][j] = RHS
-                
-                ASTNode *curr = lhs;
-                IROperand total_offset = make_operand_int(0);
-                ASTNode *base_array = NULL;
-
-                // Διασχίζουμε τα nested indices: A[i][j] -> INDEX( INDEX(A, i), j )
-                while (curr->kind == AST_INDEX) {
-                    ASTNode *idx_expr = curr->u.index.index;
-                    IROperand idx_op = codegen(idx_expr);
-
-                    // Offset += index * sizeof(current_element_type)
-                    long step_size = sem_sizeof_bytes(curr->type, 0);
-                    
-                    int t_mul = new_temp();
-                    emit(IR_MUL, idx_op, make_operand_int((int)step_size), make_operand_temp(t_mul));
-
-                    int t_add = new_temp();
-                    emit(IR_ADD, total_offset, make_operand_temp(t_mul), make_operand_temp(t_add));
-                    total_offset = make_operand_temp(t_add);
-
-                    curr = curr->u.index.array;
-                }
-                
-                // Τώρα το curr είναι η βάση (π.χ. μεταβλητή A)
-                base_array = curr;
-                IROperand base_op = codegen(base_array);
-
-                // Emit: base_op[total_offset] = rhs_res
-                emit(IR_SET_INDEX, total_offset, rhs_val, base_op);
-                return rhs_val;
-            }
-            return make_operand_none();
-        }
-
-        // --- 5. IF Statement ---
-        case AST_IF: {
-            int L_false = new_label();
-            int L_end = new_label();
-
-            // 1. Συνθήκη
-            IROperand cond = codegen(node->u.if_stmt.cond);
-            // ifFalse cond GOTO L_false
-            emit(IR_IF_FALSE, cond, make_operand_label(L_false), make_operand_none());
-
-            // 2. Then block
-            codegen(node->u.if_stmt.then_part);
-            emit(IR_GOTO, make_operand_label(L_end), make_operand_none(), make_operand_none());
-
-            // 3. Else block
-            emit_label(L_false);
-            if (node->u.if_stmt.else_part) {
-                codegen(node->u.if_stmt.else_part);
-            }
-
-            // 4. End
-            emit_label(L_end);
-            return make_operand_none();
-        }
-
-        // --- 6. WHILE Loop ---
-        case AST_WHILE: {
-            int L_start = new_label(); // Εδώ πάει το continue
-            int L_end = new_label();   // Εδώ πάει το break
-
-            emit_label(L_start);
-
-            // Συνθήκη
-            IROperand cond = codegen(node->u.while_stmt.cond);
-            emit(IR_IF_FALSE, cond, make_operand_label(L_end), make_operand_none());
-
-            // PUSH Labels
-            push_loop(L_start, L_end);
-
-            // Σώμα
-            codegen(node->u.while_stmt.body);
-
-            // POP Labels
-            pop_loop();
-
-            emit(IR_GOTO, make_operand_label(L_start), make_operand_none(), make_operand_none());
-            emit_label(L_end);
-            return make_operand_none();
-        }
-
-        // --- Break Statement ---
-        case AST_BREAK: {
-            int lbl = get_current_break_label();
-            if (lbl == -1) {
-                // Αυτό κανονικά το πιάνει το semantics.c, αλλά για ασφάλεια:
-                fprintf(stderr, "Error: 'break' outside of loop\n");
-            } else {
-                emit(IR_GOTO, make_operand_label(lbl), make_operand_none(), make_operand_none());
-            }
-            return make_operand_none();
-        }
-
-        // --- Continue Statement ---
-        case AST_CONTINUE: {
-            int lbl = get_current_continue_label();
-            if (lbl == -1) {
-                fprintf(stderr, "Error: 'continue' outside of loop\n");
-            } else {
-                emit(IR_GOTO, make_operand_label(lbl), make_operand_none(), make_operand_none());
-            }
-            return make_operand_none();
-        }
-
-        // --- 7. FOR Loop ---
-        case AST_FOR: {
-            int L_cond = new_label();
-            int L_step = new_label(); // Νέο label για το step!
-            int L_end  = new_label();
-            
-            // 1. Init
-            if (node->u.for_stmt.init) codegen(node->u.for_stmt.init);
-
-            emit_label(L_cond);
-
-            // 2. Condition
-            if (node->u.for_stmt.cond) {
-                IROperand cond = codegen(node->u.for_stmt.cond);
-                emit(IR_IF_FALSE, cond, make_operand_label(L_end), make_operand_none());
-            }
-
-            // PUSH Labels: continue -> step, break -> end
-            push_loop(L_step, L_end);
-
-            // 3. Body
-            codegen(node->u.for_stmt.body);
-
-            // POP Labels
-            pop_loop();
-
-            // 4. Step Label & Code
-            emit_label(L_step);
-            if (node->u.for_stmt.step) codegen(node->u.for_stmt.step);
-
-            emit(IR_GOTO, make_operand_label(L_cond), make_operand_none(), make_operand_none());
-            emit_label(L_end);
-            return make_operand_none();
-        }
-
-        // --- 8. Block (Λίστα εντολών) ---
-        // Στο AST σου μπορεί να είναι AST_BLOCK ή AST_LIST
-        // Εδώ υποθέτω ότι το Program έχει lists από stmts
-        case AST_BLOCK: {
-            // Συνήθως έχεις μια λίστα "stmts"
-            // Αν το AST_BLOCK έχει απλά pointers σε lists:
-            ASTNode *curr = node->u.block.stmts; 
-            // Προσοχή: Εδώ εξαρτάται πώς έχεις υλοποιήσει τη λίστα στο AST.
-            // Αν είναι συνδεδεμένη λίστα κόμβων (όπως φαίνεται στο ast.h με AST_LIST):
-            codegen(curr); // Αναδρομή στη λίστα
-            return make_operand_none();
-        }
-        
-        case AST_LIST: {
-            // Διασχίζουμε τη λίστα
-            if (node->u.list.head) codegen(node->u.list.head);
-            if (node->u.list.tail) codegen(node->u.list.tail);
-            return make_operand_none();
-        }
-
-        // --- 9. Function Declaration ---
-        // --- 9. Function Declaration ---
-        // --- 9. Function Declaration ---
-        case AST_FUNC_DECL: {
-            Symbol *func_sym = symtab_lookup(node->u.func_decl.name);
-            
-            Quad *q = malloc(sizeof(Quad));
-            q->op = IR_LABEL;
-            
-            // ΔΙΟΡΘΩΣΗ: Δίνουμε μοναδικό αυξανόμενο ID (π.χ. L1, L2...)
-            q->label_id = new_label(); 
-            
-            if (func_sym) {
-                q->arg1.type = OT_VAR;
-                q->arg1.val.sym = func_sym;
-            } else {
-                q->arg1.type = OT_CONST_STR;
-                q->arg1.val.sval = strdup(node->u.func_decl.name);
-            }
-            
-            q->arg2 = make_operand_none();
-            q->result = make_operand_none();
-            q->next = NULL;
-
-            if (!quad_head) { quad_head = q; quad_tail = q; }
-            else { quad_tail->next = q; quad_tail = q; }
-            
-            is_reachable = 1;
-
-            codegen(node->u.func_decl.body);
-            emit(IR_RETURN, make_operand_none(), make_operand_none(), make_operand_none());
-            
-            return make_operand_none();
-        }
-
-        // --- 10. Return ---
-        case AST_RETURN: {
-            IROperand res = make_operand_none();
-            if (node->u.ret_stmt.expr) {
-                res = codegen(node->u.ret_stmt.expr);
-            }
-            emit(IR_RETURN, res, make_operand_none(), make_operand_none());
-            return make_operand_none();
-        }
-        
-        // --- 11. Function / Method Call ---
-        case AST_CALL: {
-            ASTNode *func_node = node->u.call.func;
-            ASTNode *args_node = node->u.call.args;
-            int arg_count = 0;
-            char *func_name = NULL;
-            Symbol *target_func_sym = NULL;
-
-            // ΕΛΕΓΧΟΣ: Είναι μέθοδος (obj.method(...)) ή απλή συνάρτηση;
-            if (func_node->kind == AST_FIELD) {
-                // 1. Παραγωγή κώδικα για το αντικείμενο (το "this")
-                ASTNode *base_obj = func_node->u.field.base;
-                IROperand this_addr;
-
-                if (base_obj->kind == AST_VAR && strcmp(base_obj->u.var.name, "this") == 0) {
-                    this_addr = codegen(base_obj);
-                } else {
-                    IROperand base_val = codegen(base_obj);
-                    int t_this = new_temp();
-                    this_addr = make_operand_temp(t_this);
-                    emit(IR_LOAD_ADDR, base_val, make_operand_none(), this_addr);
-                }
-
-                emit(IR_PARAM, this_addr, make_operand_none(), make_operand_none());
-                arg_count++; 
-
-                Symbol *method_sym = func_node->u.field.member;
-                target_func_sym = method_sym; // Κρατάμε το σύμβολο για έλεγχο παραμέτρων
-                
-                // Name Mangling
-                Type *cls_type = base_obj->type; 
-                char buffer[128];
-                if (cls_type && cls_type->enum_name) {
-                    sprintf(buffer, "%s_%s", cls_type->enum_name, method_sym->name);
-                } else {
-                    sprintf(buffer, "_%s", method_sym->name);
-                }
-                func_name = strdup(buffer);
-            }
-            else {
-                // Απλή συνάρτηση
-                if (func_node->kind == AST_VAR) {
-                    target_func_sym = func_node->u.var.sym;
-                    func_name = target_func_sym->name;
-                } else {
-                    func_name = "unknown_func";
-                }
-            }
-
-            // 4. Παραγωγή ορισμάτων με έλεγχο Reference
-            int arg_idx_counter = 0;
-            // Αν είναι μέθοδος, το 1ο όρισμα είναι το 'this', άρα οι παράμετροι ξεκινάνε από 1 (αν τις μετράς μαζί)
-            // Στο symbol table όμως οι παράμετροι είναι stored χωρίς το this συνήθως.
-            // Εδώ υποθέτουμε ότι το arg_idx_counter ξεκινάει από 0 και αντιστοιχεί στα ορίσματα του AST.
-            
-            arg_count += gen_args(args_node, target_func_sym, &arg_idx_counter);
-
-            // 5. Ετοιμασία αποτελέσματος
-            int t = new_temp();
-            IROperand result = make_operand_temp(t);
-
-            // 6. Emit CALL
-            IROperand func_op;
-            func_op.type = OT_VAR;
-            Symbol *sym = malloc(sizeof(Symbol));
-            sym->name = func_name;
-            func_op.val.sym = sym;
-
-            emit(IR_CALL, func_op, make_operand_int(arg_count), result);
-
-            return result;
-        }
-        
-        // --- Array Access ---
-        case AST_INDEX: {
-            ASTNode *curr = node;
-            IROperand total_offset = make_operand_int(0);
-            ASTNode *base_array = NULL;
-
-            // 1. Διασχίζουμε προς τα κάτω
-            while (curr->kind == AST_INDEX) {
-                ASTNode *idx_expr = curr->u.index.index;
-                IROperand idx_op = codegen(idx_expr);
-                
-                long step_size = sem_sizeof_bytes(curr->type, 0); 
-                
-                int t_mul = new_temp();
-                emit(IR_MUL, idx_op, make_operand_int((int)step_size), make_operand_temp(t_mul));
-                
-                int t_add = new_temp();
-                emit(IR_ADD, total_offset, make_operand_temp(t_mul), make_operand_temp(t_add));
-                total_offset = make_operand_temp(t_add);
-
-                // Απλά προχωράμε στο επόμενο
-                curr = curr->u.index.array;
-            }
-            
-            // 2. Όταν βγούμε από το loop, το curr είναι πλέον η βάση (AST_VAR)
-            base_array = curr; 
-            IROperand base_op = codegen(base_array);
-            
-            // 3. Υπολογισμός αποτελέσματος
-            int t_res = new_temp();
-            IROperand result = make_operand_temp(t_res);
-            emit(IR_INDEX, base_op, total_offset, result);
-            
-            return result;
-        }
-
-        // --- Unary Operators (-, !, ++, --) ---
-        case AST_UNOP: {
-            IROperand arg = codegen(node->u.unop.expr);
-            int t = new_temp();
-            IROperand result = make_operand_temp(t);
-            
-            if (node->u.unop.op == OP_SUB) {
-                emit(IR_NEG, arg, make_operand_none(), result);
-                return result;
-            } else if (node->u.unop.op == OP_NOT) {
-                emit(IR_NOT, arg, make_operand_none(), result);
-                return result;
-            } else if (node->u.unop.op == OP_PRE_INC) {
-                // ++x:  x = x + 1, επιστρέφει το νέο x
-                emit(IR_ADD, arg, make_operand_int(1), result); 
-                emit(IR_ASSIGN, result, make_operand_none(), arg); 
-                return arg; 
-            } else if (node->u.unop.op == OP_PRE_DEC) {
-                // --x:  x = x - 1, επιστρέφει το νέο x
-                emit(IR_SUB, arg, make_operand_int(1), result); 
-                emit(IR_ASSIGN, result, make_operand_none(), arg); 
-                return arg;
-            } else if (node->u.unop.op == OP_POST_INC) {
-                // x++: κρατάει παλιά τιμή στο result, x = x + 1
-                emit(IR_ASSIGN, arg, make_operand_none(), result); 
-                int t2 = new_temp();
-                emit(IR_ADD, arg, make_operand_int(1), make_operand_temp(t2));
-                emit(IR_ASSIGN, make_operand_temp(t2), make_operand_none(), arg);
-                return result; 
-            } else if (node->u.unop.op == OP_POST_DEC) {
-                // x--: κρατάει παλιά τιμή στο result, x = x - 1
-                emit(IR_ASSIGN, arg, make_operand_none(), result); 
-                int t2 = new_temp();
-                emit(IR_SUB, arg, make_operand_int(1), make_operand_temp(t2));
-                emit(IR_ASSIGN, make_operand_temp(t2), make_operand_none(), arg);
-                return result; 
-            }
-            return result;
-        }
-
-        // --- COUT (cout << expr1 << expr2 ...) ---
-        case AST_COUT: {
-            ASTNode *curr = node->u.io_stmt.io_list;
-            // Η λίστα στο AST είναι συνήθως nested ή linked. 
-            // Αν είναι AST_LIST, την διασχίζουμε:
-            while (curr && curr->kind == AST_LIST) {
-                // Υποθέτουμε ότι το head είναι το expression
-                IROperand res = codegen(curr->u.list.head);
-                emit(IR_PRINT, res, make_operand_none(), make_operand_none());
-                curr = curr->u.list.tail;
-            }
-            // Αν έμεινε ένα τελευταίο στοιχείο (edge case της λίστας)
-            if (curr && curr->kind != AST_LIST) {
-                IROperand res = codegen(curr);
-                emit(IR_PRINT, res, make_operand_none(), make_operand_none());
-            }
-            return make_operand_none();
-        }
-
-        // --- CIN (cin >> var1 >> var2 ...) ---
-        case AST_CIN: {
-            ASTNode *curr = node->u.io_stmt.io_list;
-            while (curr && curr->kind == AST_LIST) {
-                IROperand var = codegen(curr->u.list.head);
-                // Προσοχή: Εδώ το var είναι το αποτέλεσμα, άρα μπαίνει στο result του Quad
-                emit(IR_READ, make_operand_none(), make_operand_none(), var);
-                curr = curr->u.list.tail;
-            }
-
-            if (curr && curr->kind != AST_LIST) {
-                IROperand var = codegen(curr);
-                emit(IR_READ, make_operand_none(), make_operand_none(), var);
-            }
-            return make_operand_none();
-        }
-        
-        case AST_ENUM_DECL: {
-            // Οι δηλώσεις enum δεν παράγουν κώδικα μηχανής.
-            // Οι σταθερές έχουν ήδη μπει στο Symbol Table.
-            return make_operand_none();
-        }
-
-        case AST_PROGRAM: {
-            // 1. Καθολικές δηλώσεις (συναρτήσεις όπως η inc)
-            if (node->u.program.globals) {
-                codegen(node->u.program.globals);
-            }
-            // 2. Η κύρια συνάρτηση
-            if (node->u.program.main_func) {
-                codegen(node->u.program.main_func);
-            }
-            return make_operand_none();
-        }
-
-        case AST_FIELD: {
-            ASTNode *base_node = node->u.field.base;
-            IROperand base_addr;
-
-            // ΕΛΕΓΧΟΣ: Αν η βάση είναι το 'this', χρησιμοποιούμε την τιμή του απευθείας
-            if (base_node->kind == AST_VAR && strcmp(base_node->u.var.name, "this") == 0) {
-                base_addr = codegen(base_node); 
-            } else {
-                // Για κανονικά αντικείμενα, παίρνουμε τη διεύθυνσή τους
-                IROperand base_val = codegen(base_node);
-                int t_addr = new_temp();
-                base_addr = make_operand_temp(t_addr);
-                emit(IR_LOAD_ADDR, base_val, make_operand_none(), base_addr);
-            }
-
-            int offset = node->u.field.member->offset;
-            int t_res = new_temp();
-            IROperand result = make_operand_temp(t_res);
-            
-            emit(IR_GET_FIELD, base_addr, make_operand_int(offset), result);
-            return result;
-        }
-
-        default:
-            break;
+        // Αν allocated_reg == NULL, συνεχίζει κάτω και το γράφει στη μνήμη (Spill)
     }
 
-    return make_operand_none();
+    int offset = get_mips_offset(res);
+    char *store_instr = is_float ? "s.s" : "sw";
+    
+    if (is_global(res)) {
+        fprintf(f_asm, "\t%s %s, _%s\n", store_instr, reg, res.val.sym->name);
+    } else {
+        fprintf(f_asm, "\t%s %s, %d($fp)\n", store_instr, reg, offset);
+    }
+}
+
+// src_reg, dest_reg: registers που περιέχουν τις διευθύνσεις
+void emit_memcpy(const char *dest_reg, const char *src_reg, int size) {
+    static int copy_lbl = 0;
+    copy_lbl++;
+    
+    // Χρησιμοποιούμε $t4, $t5, $t6 ως temps για την αντιγραφή
+    fprintf(f_asm, "\tli $t4, %d\n", size);      // Counter (bytes)
+    fprintf(f_asm, "copy_loop_%d:\n", copy_lbl);
+    fprintf(f_asm, "\tblez $t4, copy_end_%d\n", copy_lbl);
+    
+    fprintf(f_asm, "\tlbu $t5, 0(%s)\n", src_reg); // Load Byte Unsigned
+    fprintf(f_asm, "\tsb $t5, 0(%s)\n", dest_reg); // Store Byte
+    
+    fprintf(f_asm, "\taddiu %s, %s, 1\n", src_reg, src_reg);
+    fprintf(f_asm, "\taddiu %s, %s, 1\n", dest_reg, dest_reg);
+    fprintf(f_asm, "\taddiu $t4, $t4, -1\n");
+    fprintf(f_asm, "\tj copy_loop_%d\n", copy_lbl);
+    fprintf(f_asm, "copy_end_%d:\n", copy_lbl);
+}
+
+static int param_count = 0; // Μετρητής παραμέτρων για το IR_PARAM
+
+void generate_mips() {
+    fprintf(f_asm, ".text\n.globl main\n");
+    Quad *curr = quad_head;
+    // --- Εξυπνος Έλεγχος για Float Πράξεις ---
+    int is_float;
+    int is_string;
+
+    while (curr) {
+        is_float = 0;
+        
+        // Έλεγχος Arg1
+        if (curr->arg1.type == OT_CONST_FLOAT) is_float = 1;
+        else if (curr->arg1.type == OT_VAR && curr->arg1.val.sym && curr->arg1.val.sym->type && curr->arg1.val.sym->type->kind == TYPE_FLOAT) is_float = 1;
+        
+        // Έλεγχος Arg2
+        if (curr->arg2.type == OT_CONST_FLOAT) is_float = 1;
+        else if (curr->arg2.type == OT_VAR && curr->arg2.val.sym && curr->arg2.val.sym->type && curr->arg2.val.sym->type->kind == TYPE_FLOAT) is_float = 1;
+
+        // Έλεγχος Result
+        if (curr->result.type == OT_VAR && curr->result.val.sym && curr->result.val.sym->type && curr->result.val.sym->type->kind == TYPE_FLOAT) is_float = 1;
+
+        // --- Έλεγχος για String Πράξεις ---
+        is_string = 0;
+        if (curr->arg1.type == OT_CONST_STR || curr->arg2.type == OT_CONST_STR) is_string = 1;
+        if (!is_string && curr->arg1.type == OT_VAR && curr->arg1.val.sym && curr->arg1.val.sym->type && curr->arg1.val.sym->type->kind == TYPE_STRING) is_string = 1;
+        if (!is_string && curr->arg2.type == OT_VAR && curr->arg2.val.sym && curr->arg2.val.sym->type && curr->arg2.val.sym->type->kind == TYPE_STRING) is_string = 1;
+
+        switch(curr->op) {
+            case IR_LABEL:{
+                if (curr->arg1.type != OT_NONE) {
+                    memset(int_reg_used, 0, sizeof(int_reg_used));
+                    memset(float_reg_used, 0, sizeof(float_reg_used));
+
+                    // Λειτουργία Συνάρτησης
+                    char *func_name;
+                    int stack_size = 0;
+
+                    if (curr->arg1.type == OT_VAR) {
+                        // Περίπτωση με διαθέσιμο Symbol (Σωστή)
+                        Symbol *func_sym = curr->arg1.val.sym;
+                        func_name = func_sym->name;
+                        stack_size = func_sym->offset;
+                    } else {
+                        // Περίπτωση μόνο με όνομα (Fallback)
+                        func_name = curr->arg1.val.sval;
+                        stack_size = 32; // Default safe size
+                    }
+
+                    // Ενημερώνουμε το global current_local_size για τα Temp offsets
+                    current_local_size = stack_size;
+                    fprintf(f_asm, "L%d:\n", curr->label_id);
+                    mips_prologue(func_name, current_local_size);
+                } else {
+                    // Απλό Label (Jump target)
+                    fprintf(f_asm, "L%d:\n", curr->label_id);
+                }
+                break;
+            }
+            // --- 1. Αριθμητικές/Λογικες Πράξεις ---
+            case IR_ADD:{
+                if (is_string) {
+                    needs_strcat = 1;
+                    fprintf(f_asm, "\tli $v0, 9\n\tli $a0, 256\n\tsyscall\n");
+                    store_result(curr->result, "$v0", 0); // Σώζουμε τον pointer στο Temp
+                    
+                    fprintf(f_asm, "\tmove $a0, $v0\n"); // Dest buffer
+                    load_addr_to_reg(curr->arg1, "$a1");
+                    load_addr_to_reg(curr->arg2, "$a2");
+                    fprintf(f_asm, "\tjal _strcat\n");
+                } else if (is_float) {
+                    load_to_freg(curr->arg1, "$f0");
+                    load_to_freg(curr->arg2, "$f1");
+                    fprintf(f_asm, "\tadd.s $f2, $f0, $f1\n");
+                    store_result(curr->result, "$f2", 1);
+                } else {
+                    load_to_reg(curr->arg1, "$t0");
+                    load_to_reg(curr->arg2, "$t1");
+                    fprintf(f_asm, "\tadd $t2, $t0, $t1\n");
+                    store_result(curr->result, "$t2", 0);
+                }
+                break;
+            }
+            case IR_SUB:{
+                if (is_float) {
+                    load_to_freg(curr->arg1, "$f0");
+                    load_to_freg(curr->arg2, "$f1");
+                    fprintf(f_asm, "\tsub.s $f2, $f0, $f1\n");
+                    store_result(curr->result, "$f2", 1);
+                } else {
+                    load_to_reg(curr->arg1, "$t0");
+                    load_to_reg(curr->arg2, "$t1");
+                    fprintf(f_asm, "\tsub $t2, $t0, $t1\n");
+                    store_result(curr->result, "$t2", 0);
+                }
+                break;
+            }
+            case IR_MUL:{
+                if (is_float) {
+                    load_to_freg(curr->arg1, "$f0");
+                    load_to_freg(curr->arg2, "$f1");
+                    fprintf(f_asm, "\tmul.s $f2, $f0, $f1\n");
+                    store_result(curr->result, "$f2", 1);
+                } else {
+                    load_to_reg(curr->arg1, "$t0");
+                    load_to_reg(curr->arg2, "$t1");
+                    fprintf(f_asm, "\tmul $t2, $t0, $t1\n");
+                    store_result(curr->result, "$t2", 0);
+                }
+                break;
+            }
+            case IR_DIV:{
+                if (is_float) {
+                    load_to_freg(curr->arg1, "$f0");
+                    load_to_freg(curr->arg2, "$f1");
+                    fprintf(f_asm, "\tdiv.s $f2, $f0, $f1\n");
+                    store_result(curr->result, "$f2", 1);
+                } else {
+                    load_to_reg(curr->arg1, "$t0");
+                    load_to_reg(curr->arg2, "$t1");
+                    fprintf(f_asm, "\tdiv $t0, $t1\n");
+                    fprintf(f_asm, "\tmflo $t2\n"); 
+                    store_result(curr->result, "$t2", 0);
+                }
+                break;
+            }
+            case IR_MOD:{
+                load_to_reg(curr->arg1, "$t0");
+                load_to_reg(curr->arg2, "$t1");
+                fprintf(f_asm, "\tdiv $t0, $t1\n");
+                fprintf(f_asm, "\tmfhi $t2\n"); // Το υπόλοιπο μπαίνει στο $t2
+                fprintf(f_asm, "\tsw $t2, %d($fp)\n", get_mips_offset(curr->result));
+                break;
+            }
+            case IR_AND:{
+                load_to_reg(curr->arg1, "$t0");
+                load_to_reg(curr->arg2, "$t1");
+                fprintf(f_asm, "\tand $t2, $t0, $t1\n");
+                fprintf(f_asm, "\tsw $t2, %d($fp)\n", get_mips_offset(curr->result));
+                break;
+            }
+            case IR_OR:{
+                load_to_reg(curr->arg1, "$t0");
+                load_to_reg(curr->arg2, "$t1");
+                fprintf(f_asm, "\tor $t2, $t0, $t1\n");
+                fprintf(f_asm, "\tsw $t2, %d($fp)\n", get_mips_offset(curr->result));
+                break;
+            }
+            // --- 2. Σγκρίσεις (Relational) ---
+            case IR_EQ:{
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tseq $t2, $v0, 0\n"); // True αν v0 == 0
+                    store_result(curr->result, "$t2", 0);
+                } else if (is_float) {
+                    load_to_freg(curr->arg1, "$f0");
+                    load_to_freg(curr->arg2, "$f1");
+                    fprintf(f_asm, "\tc.eq.s $f0, $f1\n"); // Compare Equal Single
+                    
+                    int L_true = 0; // Δεν χρειάζεται label εδώ, αλλά χρησιμοποιούμε branch logic
+                    // Λογική: Set result = 1 if true, else 0
+                    // MIPS trick:
+                    fprintf(f_asm, "\tli $t2, 1\n");        // Assume True
+                    fprintf(f_asm, "\tbc1t 1f\n");          // If flag is true, skip next instruction
+                    fprintf(f_asm, "\tli $t2, 0\n");        // Else set False
+                    fprintf(f_asm, "1:\n");                 // Local label "1"
+                    store_result(curr->result, "$t2", 0);
+                } else {
+                    load_to_reg(curr->arg1, "$t0");
+                    load_to_reg(curr->arg2, "$t1");
+                    fprintf(f_asm, "\tseq $t2, $t0, $t1\n");
+                    store_result(curr->result, "$t2", 0);
+                }
+                break;
+            }
+            case IR_LT:{
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tslt $t2, $v0, $zero\n"); // True αν v0 < 0
+                    store_result(curr->result, "$t2", 0);
+                } else if (is_float) {
+                    load_to_freg(curr->arg1, "$f0");
+                    load_to_freg(curr->arg2, "$f1");
+                    fprintf(f_asm, "\tc.lt.s $f0, $f1\n"); // Check Less Than
+                    
+                    fprintf(f_asm, "\tli $t2, 1\n");
+                    fprintf(f_asm, "\tbc1t 1f\n");
+                    fprintf(f_asm, "\tli $t2, 0\n");
+                    fprintf(f_asm, "1:\n");
+                    store_result(curr->result, "$t2", 0);
+                } else {
+                    load_to_reg(curr->arg1, "$t0");
+                    load_to_reg(curr->arg2, "$t1");
+                    fprintf(f_asm, "\tslt $t2, $t0, $t1\n");
+                    store_result(curr->result, "$t2", 0);
+                }
+                break;
+            }
+            case IR_GT:{
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tsgt $t2, $v0, $zero\n"); // True αν v0 > 0
+                    store_result(curr->result, "$t2", 0);
+                }
+                else if (is_float) {
+                    // MIPS doesn't have c.gt.s, so we use c.le.s and invert logic OR swap operands
+                    // Logic: A > B is equivalent to NOT (A <= B)
+                    load_to_freg(curr->arg1, "$f0");
+                    load_to_freg(curr->arg2, "$f1");
+                    fprintf(f_asm, "\tc.le.s $f0, $f1\n"); // Check A <= B
+                    
+                    fprintf(f_asm, "\tli $t2, 0\n");        // If A <= B, then A > B is False
+                    fprintf(f_asm, "\tbc1t 1f\n");
+                    fprintf(f_asm, "\tli $t2, 1\n");        // Else True
+                    fprintf(f_asm, "1:\n");
+                    store_result(curr->result, "$t2", 0);
+                } else {
+                    load_to_reg(curr->arg1, "$t0");
+                    load_to_reg(curr->arg2, "$t1");
+                    fprintf(f_asm, "\tsgt $t2, $t0, $t1\n");
+                    store_result(curr->result, "$t2", 0);
+                }
+                break;
+            }
+            case IR_NE:{
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tsne $t2, $v0, $zero\n"); // True αν v0 != 0
+                    store_result(curr->result, "$t2", 0);
+                }
+                else if (is_float) {
+                    load_to_freg(curr->arg1, "$f0");
+                    load_to_freg(curr->arg2, "$f1");
+                    fprintf(f_asm, "\tc.eq.s $f0, $f1\n"); // Check Equal
+                    
+                    fprintf(f_asm, "\tli $t2, 0\n");        // Assume False (Equal)
+                    fprintf(f_asm, "\tbc1t 1f\n");          // If Equal, jump to store
+                    fprintf(f_asm, "\tli $t2, 1\n");        // Else True (Not Equal)
+                    fprintf(f_asm, "1:\n");
+                    store_result(curr->result, "$t2", 0);
+                } else {
+                    load_to_reg(curr->arg1, "$t0");
+                    load_to_reg(curr->arg2, "$t1");
+                    fprintf(f_asm, "\tsne $t2, $t0, $t1\n");
+                    store_result(curr->result, "$t2", 0);
+                }
+                break;
+            }
+            case IR_GE:{
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tsge $t2, $v0, $zero\n"); // True αν v0 >= 0
+                    store_result(curr->result, "$t2", 0);
+                }
+                else if (is_float) {
+                    // Logic: A >= B is equivalent to NOT (A < B)
+                    load_to_freg(curr->arg1, "$f0");
+                    load_to_freg(curr->arg2, "$f1");
+                    fprintf(f_asm, "\tc.lt.s $f0, $f1\n"); // Check A < B
+                    
+                    fprintf(f_asm, "\tli $t2, 0\n");        // If A < B, then A >= B is False
+                    fprintf(f_asm, "\tbc1t 1f\n");
+                    fprintf(f_asm, "\tli $t2, 1\n");        // Else True
+                    fprintf(f_asm, "1:\n");
+                    store_result(curr->result, "$t2", 0);
+                } else {
+                    load_to_reg(curr->arg1, "$t0");
+                    load_to_reg(curr->arg2, "$t1");
+                    fprintf(f_asm, "\tsge $t2, $t0, $t1\n");
+                    store_result(curr->result, "$t2", 0);
+                }
+                break;
+            }
+            case IR_LE:{
+                if (is_string) {
+                    needs_strcmp = 1;
+                    load_addr_to_reg(curr->arg1, "$a0");
+                    load_addr_to_reg(curr->arg2, "$a1");
+                    fprintf(f_asm, "\tjal _strcmp\n");
+                    fprintf(f_asm, "\tsle $t2, $v0, $zero\n"); // True αν v0 <= 0
+                    store_result(curr->result, "$t2", 0);
+                }
+                else if (is_float) {
+                    load_to_freg(curr->arg1, "$f0");
+                    load_to_freg(curr->arg2, "$f1");
+                    fprintf(f_asm, "\tc.le.s $f0, $f1\n"); // Check Less or Equal
+                    
+                    fprintf(f_asm, "\tli $t2, 1\n");
+                    fprintf(f_asm, "\tbc1t 1f\n");
+                    fprintf(f_asm, "\tli $t2, 0\n");
+                    fprintf(f_asm, "1:\n");
+                    store_result(curr->result, "$t2", 0);
+                } else {
+                    load_to_reg(curr->arg1, "$t0");
+                    load_to_reg(curr->arg2, "$t1");
+                    fprintf(f_asm, "\tsle $t2, $t0, $t1\n");
+                    store_result(curr->result, "$t2", 0);
+                }
+                break;
+            }
+            // --- 3. Unary Πράξεις ---
+            case IR_NEG:{
+                load_to_reg(curr->arg1, "$t0");
+                fprintf(f_asm, "\tnegu $t2, $t0\n");
+                fprintf(f_asm, "\tsw $t2, %d($fp)\n", get_mips_offset(curr->result));
+                break;
+            }
+            case IR_NOT:{
+                load_to_reg(curr->arg1, "$t0");
+                fprintf(f_asm, "\txori $t2, $t0, 1\n"); // Αντιστροφή 0 <-> 1
+                fprintf(f_asm, "\tsw $t2, %d($fp)\n", get_mips_offset(curr->result));
+                break;
+            }
+            // --- 4. Ροή Ελέγχου (Jumps & Branches) ---
+            case IR_GOTO:{
+                // arg1 είναι ο τύπος OT_LABEL
+                fprintf(f_asm, "\tj L%d\n", curr->arg1.val.ival);
+                break;
+            }
+            case IR_IF_FALSE:{
+                // Φορτώνουμε τη συνθήκη (arg1)
+                load_to_reg(curr->arg1, "$t0");
+                // Αν είναι 0 (false), πήδα στο label (arg2)
+                fprintf(f_asm, "\tbeqz $t0, L%d\n", curr->arg2.val.ival);
+                break;
+            }
+            // --- 5. Συναρτήσεις ---
+            case IR_PARAM:{
+                // 1. Φόρτωσε την παράμετρο σε έναν register
+                load_to_reg(curr->arg1, "$t0");
+                
+                // 2. Τοποθέτησέ την στη στοίβα για τη συνάρτηση που θα κληθεί.
+                // Οι παράμετροι τοποθετούνται συνήθως σε αρνητικά offsets από το $sp.
+                // Ο 1ος θα πάει στο 0($sp), ο 2ος στο -4($sp), κ.ο.κ.
+                fprintf(f_asm, "\tsw $t0, -%d($sp)\n", param_count * 4);
+                param_count++;
+                break;
+            }
+            case IR_CALL:{
+                // 1. Εκτέλεση της κλήσης. Το arg1 περιέχει το όνομα (μέσω του Symbol).
+                fprintf(f_asm, "\tjal %s\n", curr->arg1.val.sym->name);
+                
+                // 2. Μετά την επιστροφή, αποθήκευσε το αποτέλεσμα ($v0) στο result του Quad.
+                if (curr->result.type != OT_NONE) {
+                    fprintf(f_asm, "\tsw $v0, %d($fp)\n", get_mips_offset(curr->result));
+                }
+                
+                // 3. Μηδενισμός του μετρητή για την επόμενη κλήση
+                param_count = 0;
+                break;
+            }
+            // --- 6. Arrays & Pointers ---
+            case IR_INDEX: {
+                // Εντολή: result = arg1[arg2] 
+                // arg1: Base Array, arg2: Byte Offset
+                {
+                    // 1. Βρες τη διεύθυνση βάσης (Base Address)
+                    Symbol *sym = curr->arg1.val.sym;
+                    int base_offset = get_mips_offset(curr->arg1);
+                    
+                    // ΕΛΕΓΧΟΣ: Είναι τοπικός πίνακας ή δείκτης/παράμετρος;
+                    if (curr->arg1.type == OT_VAR && sym->type && sym->type->kind == TYPE_ARRAY) {
+                        // Περίπτωση 1: Τοπικός Πίνακας -> Η διεύθυνση είναι $fp + offset
+                        fprintf(f_asm, "\taddiu $t0, $fp, %d\n", base_offset);
+                    } else {
+                        // Περίπτωση 2: Δείκτης ή Temp -> Η διεύθυνση είναι η τιμή που περιέχει
+                        load_to_reg(curr->arg1, "$t0");
+                    }
+
+                    // 2. Φόρτωσε το Offset (που υπολόγισες στο IR)
+                    load_to_reg(curr->arg2, "$t1");
+
+                    // 3. Υπολόγισε την τελική διεύθυνση: $t2 = Base + Offset
+                    fprintf(f_asm, "\tadd $t2, $t0, $t1\n");
+
+                    // 4. Φόρτωσε την τιμή από τη μνήμη: result = *($t2)
+                    fprintf(f_asm, "\tlw $t3, 0($t2)\n");
+                    fprintf(f_asm, "\tsw $t3, %d($fp)\n", get_mips_offset(curr->result));
+                }
+                break;
+            }
+            case IR_SET_INDEX:{
+                // Εντολή: result[arg1] = arg2
+                // result: Base Array, arg1: Byte Offset, arg2: Value to store
+                {
+                    // 1. Βρες τη διεύθυνση βάσης (Base Address)
+                    Symbol *sym = curr->result.val.sym;
+                    int base_offset = get_mips_offset(curr->result);
+
+                    if (curr->result.type == OT_VAR && sym->type && sym->type->kind == TYPE_ARRAY) {
+                        fprintf(f_asm, "\taddiu $t0, $fp, %d\n", base_offset);
+                    } else {
+                        load_to_reg(curr->result, "$t0");
+                    }
+
+                    // 2. Φόρτωσε το Offset
+                    load_to_reg(curr->arg1, "$t1");
+
+                    // 3. Υπολόγισε την τελική διεύθυνση: $t2 = Base + Offset
+                    fprintf(f_asm, "\tadd $t2, $t0, $t1\n");
+
+                    // 4. Φόρτωσε την τιμή που θέλουμε να αποθηκεύσουμε (RHS)
+                    load_to_reg(curr->arg2, "$t3");
+
+                    // 5. Αποθήκευσε στη μνήμη: *($t2) = value
+                    fprintf(f_asm, "\tsw $t3, 0($t2)\n");
+                }
+                break;
+            }
+            // --- Helper: Load Address (&variable) ---
+            case IR_LOAD_ADDR:{
+                if (is_global(curr->arg1)) {
+                    fprintf(f_asm, "\tla $t0, _%s\n", curr->arg1.val.sym->name);
+                } else {
+                    int offset = get_mips_offset(curr->arg1);
+                    fprintf(f_asm, "\taddiu $t0, $fp, %d\n", offset);
+                }
+                store_result(curr->result, "$t0", 0);
+                break;
+            }
+            // --- 7. Classes: Fields Access ---
+            case IR_GET_FIELD:{
+                // Εντολή: result = base_addr.(+offset)
+                // arg1: Διεύθυνση βάσης (δείκτης), arg2: Σταθερό offset
+                {
+                    // 1. Φόρτωσε τη διεύθυνση βάσης στον $t0
+                    load_to_reg(curr->arg1, "$t0");
+
+                    // 2. Το offset είναι ακέραιος στο arg2
+                    int offset = curr->arg2.val.ival;
+
+                    // 3. Φόρτωσε την τιμή από τη μνήμη: $t1 = *(base + offset)
+                    fprintf(f_asm, "\tlw $t1, %d($t0)\n", offset);
+
+                    // 4. Αποθήκευσε το αποτέλεσμα στη στοίβα του caller
+                    fprintf(f_asm, "\tsw $t1, %d($fp)\n", get_mips_offset(curr->result));
+                }
+                break;
+            }
+            case IR_SET_FIELD:{
+                // Εντολή: base_addr.(+offset) = value
+                // arg1: Διεύθυνση βάσης, arg2: Offset, result: Η τιμή προς αποθήκευση
+                {
+                    // 1. Φόρτωσε τη διεύθυνση βάσης στον $t0
+                    load_to_reg(curr->arg1, "$t0");
+
+                    // 2. Φόρτωσε την τιμή που θέλουμε να γράψουμε στον $t1
+                    load_to_reg(curr->result, "$t1");
+
+                    // 3. Το offset είναι ακέραιος στο arg2
+                    int offset = curr->arg2.val.ival;
+
+                    // 4. Αποθήκευσε στη μνήμη: *(base + offset) = value
+                    fprintf(f_asm, "\tsw $t1, %d($t0)\n", offset);
+                }
+                break;
+            }
+            //-- typecasting --
+            case IR_CVT_I2F:{ // Int to Float
+                load_to_reg(curr->arg1, "$t0");
+                fprintf(f_asm, "\tmtc1 $t0, $f0\n");    // Μεταφορά στον coprocessor 1
+                fprintf(f_asm, "\tcvt.s.w $f0, $f0\n"); // Μετατροπή Word σε Single precision
+                store_result(curr->result, "$f0", 1);
+                break;
+            }
+            case IR_CVT_F2I:{ // Float to Int
+                load_to_freg(curr->arg1, "$f0");
+                fprintf(f_asm, "\tcvt.w.s $f0, $f0\n"); // Μετατροπή Single σε Word
+                fprintf(f_asm, "\tmfc1 $t0, $f0\n");    // Μεταφορά πίσω σε CPU register
+                store_result(curr->result, "$t0", 0);
+                break;
+            }
+            //-- βασικές εντολές --
+            case IR_ASSIGN: {
+                int size = 4; // Default scalar size
+                Symbol *s = NULL;
+                if (curr->arg1.type == OT_VAR) s = curr->arg1.val.sym;
+                else if (curr->result.type == OT_VAR) s = curr->result.val.sym;
+                
+                // Αν βρούμε σύμβολο και έχει τύπο ARRAY ή STRING
+                if (s && s->type && (s->type->kind == TYPE_ARRAY || s->type->kind == TYPE_STRING)) {
+                    if (s->type->kind == TYPE_STRING) size = 256;
+                    else size = s->type->array_size * sem_sizeof_bytes(s->type->elem_type, 0); // 0 line dummy
+                }
+
+                if (size > 4) {
+                    load_addr_to_reg(curr->arg1, "$t0"); // Source Addr
+                    load_addr_to_reg(curr->result, "$t1"); // Dest Addr
+                    emit_memcpy("$t1", "$t0", size);
+                } else {
+                    // --- SCALAR COPY ---
+                    if (is_float) {
+                        load_to_freg(curr->arg1, "$f0");
+                        store_result(curr->result, "$f0", 1);
+                    } else {
+                        load_to_reg(curr->arg1, "$t0");
+                        store_result(curr->result, "$t0", 0);
+                    }
+                }
+                break;
+            }
+
+            case IR_PRINT:{
+                // 1. Περίπτωση String Literal (π.χ. "Hello")
+                if (curr->arg1.type == OT_CONST_STR) {
+                    fprintf(f_asm, "\tli $v0, 4\n");
+                    fprintf(f_asm, "\tla $a0, %s\n", curr->arg1.val.sval);
+                    fprintf(f_asm, "\tsyscall\n");
+                } 
+                // 2. Περίπτωση Float Literal (π.χ. 3.14)
+                else if (curr->arg1.type == OT_CONST_FLOAT) {
+                    fprintf(f_asm, "\tli $v0, 2\n");
+                    load_to_freg(curr->arg1, "$f12"); // Το syscall 2 θέλει το όρισμα στον $f12
+                    fprintf(f_asm, "\tsyscall\n");
+                } 
+                // 3. Περίπτωση Μεταβλητής (VAR)
+                else if (curr->arg1.type == OT_VAR) {
+                    Symbol *s = curr->arg1.val.sym;
+                    
+                    // Α. Είναι Float Variable; -> Syscall 2
+                    if (s->type && s->type->kind == TYPE_FLOAT) {
+                        fprintf(f_asm, "\tli $v0, 2\n");
+                        load_to_freg(curr->arg1, "$f12");
+                        fprintf(f_asm, "\tsyscall\n");
+                    } 
+                    // Β. Είναι String Variable; -> Syscall 4
+                    else if (s->type && s->type->kind == TYPE_STRING) {
+                        fprintf(f_asm, "\tli $v0, 4\n");
+                        
+                        // ΠΡΟΣΟΧΗ: Θέλουμε τη ΔΙΕΥΘΥΝΣΗ του buffer, όχι την τιμή!
+                        if (is_global(curr->arg1)) {
+                            // Global: Load Label Address
+                            fprintf(f_asm, "\tla $a0, _%s\n", s->name);
+                        } else {
+                            // Local: Calculate Address ($fp + offset)
+                            fprintf(f_asm, "\taddiu $a0, $fp, %d\n", get_mips_offset(curr->arg1));
+                        }
+                        fprintf(f_asm, "\tsyscall\n");
+                    } 
+                    // Γ. Είναι Integer/Char; -> Syscall 1
+                    else {
+                        fprintf(f_asm, "\tli $v0, 1\n");
+                        load_to_reg(curr->arg1, "$a0");
+                        fprintf(f_asm, "\tsyscall\n");
+                    }
+                } 
+                // 4. Default (Temps, Int Literals) -> Syscall 1
+                else {
+                    fprintf(f_asm, "\tli $v0, 1\n");
+                    load_to_reg(curr->arg1, "$a0");
+                    fprintf(f_asm, "\tsyscall\n");
+                }
+                
+                // Εκτύπωση αλλαγής γραμμής (όπως ορίζει η CPP στο παράδειγμα)
+                //fprintf(f_asm, "\tli $v0, 4\n\tla $a0, newline\n\tsyscall\n");
+                break;
+            }
+            case IR_READ: {
+                int syscall_code = 5; // Default Read Integer
+                
+                // Έλεγχος τύπου
+                Symbol *s = NULL;
+                if (curr->result.type == OT_VAR) s = curr->result.val.sym;
+                
+                if (s && s->type) {
+                    if (s->type->kind == TYPE_FLOAT) syscall_code = 6;
+                    else if (s->type->kind == TYPE_STRING) syscall_code = 8;
+                }
+
+                if (syscall_code == 6) { // Float
+                    fprintf(f_asm, "\tli $v0, 6\n");
+                    fprintf(f_asm, "\tsyscall\n");
+                    store_result(curr->result, "$f0", 1); // Το αποτέλεσμα μπαίνει στον $f0
+                } 
+                else if (syscall_code == 8) { // String
+                    fprintf(f_asm, "\tli $v0, 8\n");
+                    
+                    // Load Address buffer στο $a0
+                    if (is_global(curr->result)) fprintf(f_asm, "\tla $a0, _%s\n", s->name);
+                    else fprintf(f_asm, "\taddiu $a0, $fp, %d\n", get_mips_offset(curr->result));
+                    
+                    fprintf(f_asm, "\tli $a1, 256\n"); // Max length
+                    fprintf(f_asm, "\tsyscall\n");
+                    
+                    // Αφαιρούμε το \n στο τέλος (προαιρετικό αλλά καλό)
+                    // ... (παραλείπεται για απλότητα) ...
+                } 
+                else { // Integer
+                    fprintf(f_asm, "\tli $v0, 5\n");
+                    fprintf(f_asm, "\tsyscall\n");
+                    store_result(curr->result, "$v0", 0);
+                }
+                break;
+            }
+
+            case IR_RETURN: {
+                if (curr->arg1.type != OT_NONE) {
+                    // Έλεγχος αν επιστρέφουμε Float
+                    if (is_float) { 
+                        load_to_freg(curr->arg1, "$f0"); // Επιστροφή στο $f0
+                    } else {
+                        load_to_reg(curr->arg1, "$v0");  // Επιστροφή στο $v0
+                    }
+                }
+                mips_epilogue(current_local_size);
+                break;
+            }
+        }
+        curr = curr->next;
+    }
+
+    if (temp_location) {
+        free(temp_location);
+        temp_location = NULL;
+        temp_location_capacity = 0;
+    }
 }
