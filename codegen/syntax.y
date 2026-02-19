@@ -120,7 +120,7 @@
 %token <strval>     T_NOTOP              "notop"
 %token <strval>     T_INCDEC             "incdec"
 %token T_SIZEOP             "sizeop"
-%token T_LISTFUNC           "listfunc"
+%token <strval>     T_LISTFUNC           "listfunc"
 %token T_LPAREN             "lparen"
 %token T_RPAREN             "rparen"
 %token T_SEMI               "semi"
@@ -423,9 +423,9 @@ variable
                                                                                 }
                             | T_LISTFUNC T_LPAREN general_expression T_RPAREN
                                                                                 {
-                                                                                    /* TODO: listfunc semantics */
-                                                                                    $$.type = type_error;
-                                                                                    $$.node = NULL;
+                                                                                    Type *t = sem_list_func($1, $3.type, yylineno); 
+                                                                                    $$.type = t;
+                                                                                    $$.node = ast_make_list_func($1, $3.node, t, yylineno);
                                                                                 }
                             | decltype T_ID
                                                                                 {
@@ -501,13 +501,15 @@ listexpression :            T_LBRACK list_elements T_RBRACK                     
 
 list_elements:              list_elements T_COMMA assignment 
                                                                                 { 
-                                                                                    $$.type = sem_find_list_element_type($1.type, $3.type, yylineno);
+                                                                                    Type *elemType = sem_find_list_element_type($1.type, $3.type, yylineno);
+                                                                                    $$.type = elemType;
                                                                                     $$.node = ast_list_append($1.node, $3.node, yylineno);
+
                                                                                 }
                             | assignment                                        
                                                                                 { 
                                                                                     $$.type = $1.type;
-                                                                                    $$.node = $1.node; 
+                                                                                    $$.node = ast_make_list($1.node, NULL, yylineno); 
                                                                                 }
                             ;
 init_values :               init_values T_COMMA init_value

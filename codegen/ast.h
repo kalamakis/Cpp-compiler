@@ -33,6 +33,7 @@ typedef enum {
     AST_VAR,
     AST_CONST,
     AST_LIST,
+    AST_LIST_FUNC,
 
     AST_INDEX,   /* array[index] */
 
@@ -100,6 +101,8 @@ struct ASTNode {
         /* λίστα */
         struct { struct ASTNode *head; struct ASTNode *tail; } list;
 
+        struct { char*name; struct ASTNode *arg; } list_func;
+
         /*IO πεδίο για CIN, COUT*/
         struct { struct ASTNode *io_list; } io_stmt;
 
@@ -113,6 +116,7 @@ struct ASTNode {
 
 ASTNode *ast_make_list(ASTNode *head, ASTNode *tail, int line);
 ASTNode *ast_list_append(ASTNode *list, ASTNode *elem, int line);
+ASTNode *ast_make_list_func(char *name, ASTNode *arg, Type *type, int line);
 
 /* Global root of AST */
 extern ASTNode *ast_root;

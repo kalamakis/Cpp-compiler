@@ -85,6 +85,8 @@ Type *sem_find_list_element_type(Type *acc, Type *elem, int line);
 Type *sem_index(Type *arrayType, Type *indexType, int lineno);
 
 Type *sem_length(Type *exprr,int line);
+Type *sem_list_func(const char *name, Type *arg_type, int line);
+static int analyze_list_func_name(const char *name);
 
 //FUNCTIONS
 

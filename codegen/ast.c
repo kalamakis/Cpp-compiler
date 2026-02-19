@@ -34,6 +34,14 @@ ASTNode *ast_make_list(ASTNode *head, ASTNode *tail, int line)
     return n;
 }
 
+
+ASTNode *ast_make_list_func(char *name, ASTNode *arg, Type *type, int line) {
+    ASTNode *n = ast_new(AST_LIST_FUNC, type, line);
+    n->u.list_func.name = strdup(name);
+    n->u.list_func.arg = arg;
+    return n;
+}
+
 ASTNode *ast_list_append(ASTNode *list, ASTNode *elem, int line)
 {
     if (!list) return elem;

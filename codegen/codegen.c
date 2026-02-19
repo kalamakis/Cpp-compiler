@@ -929,6 +929,48 @@ void generate_mips() {
                 mips_epilogue(current_local_size);
                 break;
             }
+            /*LIST OPERATIONS*/
+
+            case IR_CONS: {
+                fprintf(f_asm, "\t# --- CONS (New List Node) ---\n");
+                // 1. Δέσμευση 8 bytes (Heap Allocation)
+                fprintf(f_asm, "\tli $v0, 9\n");
+                fprintf(f_asm, "\tli $a0, 8\n");
+                fprintf(f_asm, "\tsyscall\n");
+                // Μεταφορά της διεύθυνσης στον $t2
+                fprintf(f_asm, "\tmove $t2, $v0\n");
+                // 2. Αποθήκευση Head (arg1) στο offset 0
+                load_to_reg(curr->arg1, "$t0");
+                fprintf(f_asm, "\tsw $t0, 0($t2)\n");
+                // 3. Αποθήκευση Tail (arg2) στο offset 4
+                load_to_reg(curr->arg2, "$t1");
+                fprintf(f_asm, "\tsw $t1, 4($t2)\n");
+                // 4. Αποθήκευση του δείκτη (result) στη στοίβα (local var / temp)
+                fprintf(f_asm, "\tsw $t2, %d($fp)\n", get_mips_offset(curr->result));
+                break;
+            }
+            case IR_CAR: {
+                // Εντολή: result = CAR(arg1)
+                fprintf(f_asm, "\t# --- CAR ---\n");
+                // 1. Φόρτωση της διεύθυνσης της λίστας
+                load_to_reg(curr->arg1, "$t0");
+                // 2. Φόρτωση του Head από το offset 0
+                fprintf(f_asm, "\tlw $t1, 0($t0)\n");
+                // 3. Αποθήκευση αποτελέσματος
+                fprintf(f_asm, "\tsw $t1, %d($fp)\n", get_mips_offset(curr->result));
+                break;
+            }
+            case IR_CDR: {
+                // Εντολή: result = CDR(arg1)
+                fprintf(f_asm, "\t# --- CDR ---\n");
+                // 1. Φόρτωση της διεύθυνσης της λίστας
+                load_to_reg(curr->arg1, "$t0");
+                // 2. Φόρτωση του Tail από το offset 4
+                fprintf(f_asm, "\tlw $t1, 4($t0)\n");
+                // 3. Αποθήκευση αποτελέσματος
+                fprintf(f_asm, "\tsw $t1, %d($fp)\n", get_mips_offset(curr->result));
+                break;
+            }
         }
         curr = curr->next;
     }

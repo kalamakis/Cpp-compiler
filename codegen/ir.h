@@ -51,7 +51,13 @@ typedef enum {
     IR_CVT_F2I,  // Convert Float to Int (μετατροπή σε ακέραιο)
     IR_LOAD_ADDR,  // result = &arg1 (διεύθυνση μνήμης)
     IR_GET_FIELD, // result = base_addr + offset (ανάγνωση πεδίου)
-    IR_SET_FIELD // base_addr + offset = value (ανάθεση σε πεδίο)
+    IR_SET_FIELD, // base_addr + offset = value (ανάθεση σε πεδίο)
+
+    //---lists ops//
+
+    IR_CONS,        //
+    IR_CAR,
+    IR_CDR
 } IROp;
 
 typedef enum {

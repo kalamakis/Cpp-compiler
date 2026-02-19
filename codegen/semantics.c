@@ -802,6 +802,48 @@ Type *sem_find_list_element_type(Type *acc, Type *elem, int line){
     return acc;
 }
 
+Type *sem_list_func(const char *name, Type *arg_type, int line) {
+    if (!arg_type || arg_type == type_error) return type_error;
+    if (arg_type->kind != TYPE_LIST) {
+        sem_fatal("Argument to list function '%s' must be a list (line %d)", name, line);
+    }
+    int kind = analyze_list_func_name(name);
+    if (kind == 0) {
+        sem_fatal("Invalid list function name '%s' (line %d). Valid forms: C[A|D]...R", name, line);
+    }
+    if (kind == 1) {
+        return arg_type->elem_type;
+    } else {
+        return arg_type;
+    }
+}
+
+
+static int analyze_list_func_name(const char *name) {
+    if (!name || (name[0] != 'c' && name[0] != 'C')) return 0;
+    int len = strlen(name);
+    if (len < 3 || (name[len-1] != 'r' && name[len-1] != 'R')) return 0;
+    int a_count = 0;
+    for (int i = 1; i < len - 1; i++) {
+        char c = name[i];
+        if (c == 'a' || c == 'A') {
+            a_count++;
+        } else if (c == 'd' || c == 'D') {
+            // continue;
+        } else {
+            return 0;
+        }
+    }
+    /*
+    - ONE 'A' and any 'D' -> Return Element Type
+    - No 'A' only 'D' -> Return List Type
+    - More than one 'A' -> Error
+    */
+    if (a_count > 1) return 0;
+    if (a_count == 1) return 1;
+    return 2;
+}
+
 //FUNCTIONS
 
 Type *sem_call_check(ASTNode *func_node, ASTNode *args, int line)

@@ -752,8 +752,26 @@ IROperand codegen(ASTNode *node) {
             return make_operand_none();
         }
 
-        // --- 9. Function Declaration ---
-        // --- 9. Function Declaration ---
+        //συναρτησεις λιστας
+        case AST_LIST_FUNC: {
+            IROperand current_list = codegen(node->u.list_func.arg);
+            char *fname = node->u.list_func.name;
+            int len = strlen(fname);
+
+            for (int i = len - 2; i >= 1; i--) {
+                char c = fname[i];
+                int t = new_temp();
+                IROperand res = make_operand_temp(t);
+                if (c == 'A' || c == 'a') {
+                    emit(IR_CAR, current_list, make_operand_none(), res);
+                } else if (c == 'D' || c == 'd') {
+                    emit(IR_CDR, current_list, make_operand_none(), res);
+                }
+                current_list = res;
+            }
+            return current_list;
+        }
+        
         // --- 9. Function Declaration ---
         case AST_FUNC_DECL: {
             Symbol *func_sym = symtab_lookup(node->u.func_decl.name);
