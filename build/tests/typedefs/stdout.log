@@ -1,0 +1,23 @@
+AST DOT written to ast.dot
+AST PNG written to ast.png
+
+--- Data Section ---
+_str_1: "Number x should be 42: "
+_str_2: " | Float y should be 3.14: "
+_str_3: " | List Head should be 10: "
+
+--- Code Section ---
+L1: (main)
+	x = 42
+	y = 3.14
+	L = 
+	_t1 =  (unknown op) 
+	head_val = _t1
+	PRINT _str_1
+	PRINT x
+	PRINT _str_2
+	PRINT y
+	PRINT _str_3
+	PRINT head_val
+	return 0
+------------------------------

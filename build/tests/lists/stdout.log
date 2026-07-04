@@ -1,0 +1,36 @@
+AST DOT written to ast.dot
+AST PNG written to ast.png
+
+--- Data Section ---
+_str_1: "CAR (10): "
+_str_2: " | CADR (20): "
+_str_3: " | CAR(CDR) (20): "
+_str_4: " | CAR(CDDR) (30): "
+
+--- Code Section ---
+L1: (main)
+	L = 
+	_t1 =  (unknown op) 
+	val1 = _t1
+	PRINT _str_1
+	PRINT val1
+	_t2 =  (unknown op) 
+	_t3 =  (unknown op) 
+	val2 = _t3
+	PRINT _str_2
+	PRINT val2
+	_t4 =  (unknown op) 
+	tail = _t4
+	_t5 =  (unknown op) 
+	val2 = _t5
+	PRINT _str_3
+	PRINT val2
+	_t6 =  (unknown op) 
+	_t7 =  (unknown op) 
+	rest = _t7
+	_t8 =  (unknown op) 
+	val3 = _t8
+	PRINT _str_4
+	PRINT val3
+	return 0
+------------------------------

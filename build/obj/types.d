@@ -1,0 +1,6 @@
+build/obj/types.o: src/types.c src/types.h src/hashtable.h src/symbol.h \
+ src/symbolTable.h
+src/types.h:
+src/hashtable.h:
+src/symbol.h:
+src/symbolTable.h:
