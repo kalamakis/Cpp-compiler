@@ -9,6 +9,7 @@ FILE *f_asm;
 static int needs_strcmp = 0;
 static int needs_strcat = 0;
 
+//stack management and function call conventions must be corrected
 // --- Register Allocation for Temps ---
 #define NUM_INT_REGS 7
 #define NUM_FLOAT_REGS 7
