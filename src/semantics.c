@@ -86,7 +86,8 @@ int is_list(TypeKind k){
     return (k == TYPE_LIST);
 }
 
-//array/list/class/union
+//array/list/
+//class/union/
 static int is_composite(TypeKind k){
     return (k == TYPE_ARRAY ||k == TYPE_LIST || k == TYPE_CLASS || k == TYPE_UNION);
 }
